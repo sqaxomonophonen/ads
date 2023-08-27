@@ -77,26 +77,48 @@ function process_au_file(path) {
 function process_4st_file(path) {
 	const src = open(path);
 
-	let tokens = [];
-	let expect_word = false;
+	const new_scope = () => ({
+		words: {},
+		tokens: [],
+	});
 
-	const WORD="word", NUMBER="number", DEFWORD="defword", ENDWORD="endword", OP="op";
+	let scope = new_scope(null);
+	scope.tokens = null; // throw error if code attempts to push tokens onto top-level scope
+	let scope_stack = [scope];
+
+	let handle_defword = false;
+
+	const WORD="word", NUMBER="number", OP="op";
 
 	function push_token(t, a) {
-		if (expect_word) {
+		if (scope_stack.length < 2 && t !== DEFWORD) src.error("only word definitions (\":<word>\") are allowed at the top level");
+		if (handle_defword) {
 			if (t !== WORD) src.error("expected WORD");
-			expect_word = false;
+			scope_stack[scope_stack.length-2].words[a] = scope;
+			handle_defword = false;
+		} else {
+			scope.tokens.push([t, a]);
 		}
-		tokens.push([t, a]);
 	}
 
-	function enter_word() {
-		push_token(DEFWORD);
-		expect_word = true;
+	function enter_scope() {
+		scope = new_scope();
+		scope_stack.push(scope);
 	}
 
-	function leave_word() {
-		push_token(ENDWORD);
+	function leave_scope() {
+		if (scope_stack.length === 0) src.error("left top-level scope");
+		scope_stack.pop();
+		scope = scope_stack[scope_stack.length-1];
+	}
+
+	function enter_word_definition() {
+		handle_defword = true;
+		enter_scope();
+	}
+
+	function leave_word_definition() {
+		leave_scope();
 	}
 
 	for (;;) {
@@ -115,9 +137,9 @@ function process_4st_file(path) {
 			const number = src.eat_while_match(["07","-",".","e",":"]);
 			push_token(NUMBER, number);
 		} else if /*word definition*/ (ch === ":") {
-			enter_word();
-		} else if /*end word (implicit return)*/ (ch === ";") {
-			leave_word();
+			enter_word_definition();
+		} else if /*end of word definition (implicit return)*/ (ch === ";") {
+			leave_word_definition();
 		} else if /*1-char op*/  (one_of(ch, "+-*/%^&")) {
 			push_token(OP, ch);
 		} else if /*comment*/ (ch === "(") {
@@ -127,7 +149,10 @@ function process_4st_file(path) {
 		}
 	}
 
-	console.log(tokens); // TODO
+	if (scope_stack.length !== 1) src.error("word definition was not terminated");
+
+	//console.log(tokens); // TODO
+	console.log(JSON.stringify(scope, null, 2)); // TODO
 }
 
 //process_songlist_file("main.songlist");

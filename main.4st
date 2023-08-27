@@ -1,2 +1,9 @@
+( hello comment )
 ( #include "fr1st.4st" )
-:sqr ( x -- x^2 ) dup * ;
+
+:square ( x -- x^2 )
+   :inner_word
+      dup +
+   ;
+   dup *
+;
