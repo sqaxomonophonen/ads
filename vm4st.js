@@ -1,23 +1,26 @@
 // npx uglify-js vm4st.js --compress --mangle eval,reserved=['R','O','U','S']  -o vm4st.min.js
 
+// convention: if a function argument begins with "_" it's not a real argument,
+// but for defining local variables
+
 function vm4st(words) {
 	let
 		/*NOMANGL*/R, // opcode aRgument
-		tup,current_op, // Tuple of oPcode and aRgument
+		current_op, // Tuple of oPcode and aRgument
 
 		program_word = words.length-1, // main
 		program_counter = 0,
 		stack = [], // main value stack
 		rstack = [], // return stack
-		advance = () => (tup=words[program_word][program_counter++],[current_op,R]=tup||[0],tup), // get next instruction
+		advance = (_tup) => (_tup=words[program_word][program_counter++],[current_op,R]=_tup||[0],_tup), // get next instruction
 		/*NOMANGL*/O = n=>stack.splice(-(n||1)), // pOp n elements
 		/*NOMANGL*/U = v=>stack.push(v),         // pUsh 1 element
-		/*NOMANGL*/S = (o,depth)=>{
-			depth = 0;
+		/*NOMANGL*/S = (o,_depth)=>{
+			_depth = 0;
 			for (;;) {
 				advance();
-				if (!depth && current_op == o) break;
-				if (current_op == 1) depth += 2; else if (current_op == 2 || current_op == 3) depth--;
+				if (!_depth && current_op == o) break;
+				if (current_op == 1) _depth += 2; else if (current_op == 2 || current_op == 3) _depth--;
 			}
 		},
 		ops = [],
