@@ -82,8 +82,8 @@ function process_4st_file(path) {
 		tokens: [],
 	});
 
-	let scope = new_scope(null);
-	scope.tokens = null; // throw error if code attempts to push tokens onto top-level scope
+	let scope = new_scope();
+	delete(scope.tokens); // throw error if code attempts to push tokens onto top-level scope
 	let scope_stack = [scope];
 
 	let handle_defword = false;
