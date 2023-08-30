@@ -119,7 +119,8 @@ function process_4st_file(path) {
 		[   WORD    , "pop"       ,  ID     ,  "POP"         ],
 		[   WORD    , "exchange"  ,  ID     ,  "EXCHANGE"    ],
 		[   WORD    , "trirot"    ,  ID     ,  "TRIROT"      ],
-		[   WORD    , "assert"    ,  ID     ,  "ASSERT"      ],
+		[   WORD    , "assert"    ,  ID     ,  "DEBUG"       ],
+		[   WORD    , "dump"      ,  ID     ,  "DEBUG"       ],
 		[   OP1     , "+"         ,  INFIX  ,  "+"           ],
 		[   OP1     , "-"         ,  INFIX  ,  "-"           ],
 		[   OP1     , "*"         ,  INFIX  ,  "*"           ],
@@ -344,20 +345,27 @@ function process_4st_file(path) {
 		}
 		rec([super_word]);
 
-		let required_vm_op_ids = {};
+		let required_vm_ids = {};
+		let required_vm_other_ops = {};
 		for (const w of prg_words) {
 			const tokens = w[1];
 			for (const t of tokens) {
 				const vm_op_id = t[2][0];
-				required_vm_op_ids[vm_op_id] = true;
+				const line = ISA[vm_op_id];
+				if (line[2] === ID) {
+					required_vm_ids[line[3]] = true;
+				} else {
+					required_vm_other_ops[vm_op_id] = true;
+				}
 			}
 		}
 
-		let op_map = {};
+		let op_remap = {};
 		let op_idx = 0;
 		for (let i = 0; i < ISA.length; i++) {
-			const keep = (ISA[i][2] === ID && ISA[i][3] === "STATIC") || required_vm_op_ids[i];
-			if (keep) op_map[i] = op_idx++;
+			const line = ISA[i];
+			const keep = (line[2] === ID && (line[3] === "STATIC" || required_vm_ids[line[3]])) || required_vm_other_ops[i];
+			if (keep) op_remap[i] = op_idx++;
 		}
 
 		let vm_words = [];
@@ -365,8 +373,8 @@ function process_4st_file(path) {
 			let inst = [];
 			for (const t of w[1]) {
 				//console.log(t);
-				const opi = op_map[t[2][0]];
-				if (opi === undefined) throw new Error("op with no mappinG");
+				const opi = op_remap[t[2][0]];
+				if (opi === undefined) throw new Error("op with no mapping");
 				//console.log(opi);
 				switch (t[0]) {
 				case "BUILTIN_WORD":
@@ -396,7 +404,7 @@ function process_4st_file(path) {
 
 		//required_vm_op_ids = Object.keys(required_vm_op_ids).map(x => parseInt(x,10)).sort((a,b)=>a-b);
 
-		let vm;
+		let vm, vm_src;
 		{
 			let piping = true;
 			const expr0 = /\/\*ST4([:{}_])([^*]+)\*\//;
@@ -405,10 +413,10 @@ function process_4st_file(path) {
 			for (const line of vm4stub_lines) {
 				let mo0 = expr0.exec(line);
 				const pass_line = () => pass_lines.push(line);
-				function replace(id, vtype, join) {
+				function replace_id(id, vtype, join) {
 					let xs = [];
 					for (let i = 0; i < ISA.length; i++) {
-						if (!(required_vm_op_ids[i] && ISA[i][2] === vtype)) continue;
+						if (!(required_vm_other_ops[i] && ISA[i][2] === vtype)) continue;
 						xs.push(ISA[i][3]);
 					}
 					if (xs.length === 0) return;
@@ -425,14 +433,14 @@ function process_4st_file(path) {
 					} else {
 						do_include = false;
 						for (let i = 0; i < ISA.length && !do_include; i++) {
-							if (!required_vm_op_ids[i]) continue;
-							if (ISA[i][2] === ID && ISA[i][3] === id) {
+							const line = ISA[i];
+							if (line[2] !== ID) continue;
+							if (line[3] === id && required_vm_ids[id]) {
 								do_include = true;
 							}
 						}
 					}
 
-					//console.log([line, typ, id]);
 					switch (typ) {
 					case ":":
 						if (do_include) pass_line();
@@ -455,9 +463,9 @@ function process_4st_file(path) {
 					if (mo1) {
 						const id = mo1[1];
 						switch (mo1[1]) {
-						case "INFIX":  replace(mo1[0], INFIX,  " "); break;
-						case "PREFIX": replace(mo1[0], PREFIX, "");  break;
-						case "MATH1":  replace(mo1[0], MATH1,  " "); break;
+						case "INFIX":  replace_id(mo1[0], INFIX,  " "); break;
+						case "PREFIX": replace_id(mo1[0], PREFIX, "");  break;
+						case "MATH1":  replace_id(mo1[0], MATH1,  " "); break;
 						default: throw new Error("unhandled id: " + id);
 						}
 					} else if (piping) {
@@ -466,7 +474,7 @@ function process_4st_file(path) {
 				}
 			}
 
-			const vm_src = pass_lines.join("\n");
+			vm_src = pass_lines.join("\n");
 			vm = eval(vm_src);
 		}
 
@@ -474,6 +482,7 @@ function process_4st_file(path) {
 			vm,
 			vm_words,
 			export_word_indices,
+			vm_src,
 		}
 	}
 
@@ -481,12 +490,11 @@ function process_4st_file(path) {
 	//console.log(test_prg);
 	for (const i of test_prg.export_word_indices) {
 		let s = test_prg.vm(test_prg.vm_words, i);
-		console.log([i,s]);
+		//console.log([i,s]);
 	}
 
 	const main_prg = trace_program((depth,name) => depth === 0 && name.startsWith("main_"));
 	//console.log(main_prg);
-
 }
 
 //process_songlist_file("main.songlist");

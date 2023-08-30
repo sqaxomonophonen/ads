@@ -96,14 +96,16 @@
 	/*ST4:POP*/push_op(__a => { o() }); // pop (a --)
 	/*ST4:EXCHANGE*/push_op((__a,__b) => { __a = o(); __b = o(); u(__b); u(__a); }); // exchange (a b -- b a)
 	/*ST4:TRIROT*/push_op((__a,__b,__c) => { __a = o(); __b = o(); __c = o(); u(__b); u(__c); u(__a); }); // trirot (a b c -- b c a)
-	/*ST4:ASSERT*/push_op(_ => { let v = o(); if (!v) throw new Error("ASSERTION FAILED"); })
+	/*ST4{DEBUG*/
+	push_op(_ => { if (!o()[0]) throw new Error("ASSERTION FAILED"); })
+	push_op(_ => { console.log("STACK", stack); });
+	/*ST4}DEBUG*/
 
-	for (op of ssplit(ST4_INFIX)) push_opn1_expr(2, "a"+op+"b");
-	for (op of ST4_PREFIX) push_opn1_expr(1, op+"a");
-	for (op of ssplit(ST4_MATH1)) push_opn1_expr(1, "Math."+op+"(a)");
+	for (op of ssplit(ST4_INFIX))  push_opn1_expr(2, "a"+op+"b");
+	for (op of ST4_PREFIX)         push_opn1_expr(1, op+"a");
+	for (op of ssplit(ST4_MATH1))  push_opn1_expr(1, "Math."+op+"(a)");
 
 	for (;advance(),!ops[current_opcode]();); // execution loop
 
 	return stack;
-	//console.log(stack);
 }
