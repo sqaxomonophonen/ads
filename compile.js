@@ -92,7 +92,7 @@ function process_songlist_file(path) {
 	// TODO
 }
 
-function process_au_file(path) {
+function process_aust_file(path) {
 	const src = open(path);
 	// TODO
 }
@@ -237,10 +237,19 @@ function process_4st_file(path) {
 		}
 	}
 
+	let comment_depth = 0;
 	for (;;) {
 		src.skip_whitespace();
 		src.mark();
 		const ch = src.get();
+		if (comment_depth > 0) {
+			if (ch === "(") {
+				comment_depth++;
+			} else if (ch == ")") {
+				comment_depth--;
+			}
+			continue;
+		}
 		if (ch === undefined) {
 			break;
 		} else if (ch === "`") { // push word index
@@ -275,7 +284,7 @@ function process_4st_file(path) {
 		} else if (one_of(ch, lang_one_char_ops)) {
 			push_token("OP1", ch, lang_one_char_to_vm_op_map[ch]);
 		} else if /*comment*/ (ch === "(") {
-			src.skip_until_match_one_of(")");
+			comment_depth++;
 		} else {
 			src.error("unexpected character");
 		}
@@ -498,6 +507,7 @@ function process_4st_file(path) {
 }
 
 //process_songlist_file("main.songlist");
-//process_au_file("main.au");
 //console.log(__dirname)
-TIME("4st processing", _=>process_4st_file("main.4st"));
+
+TIME("aust processing" , _=>process_aust_file("main.aust"));
+TIME("4st processing"  , _=>process_4st_file("main.4st"));
