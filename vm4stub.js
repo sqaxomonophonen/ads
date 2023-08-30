@@ -1,4 +1,4 @@
-// npx uglify-js vm4st.js --compress --mangle eval,reserved=['o','u'] -o vm4st.min.js
+// npx uglify-js vm4stub.js --exprssion --compress --mangle eval,reserved=['o','u'] -o vm4stub.min.js
 
 // convention: if a function argument begins with "__" it's not a real
 // argument, but for defining local variables
