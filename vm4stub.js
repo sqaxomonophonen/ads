@@ -7,7 +7,7 @@
 // eval()s, meaning they should not be mangled. also add the name to the
 // reserved=[] list above.
 
-function vm4st(words) {
+(words) => {
 	let
 		current_opcode,
 		current_oparg,
@@ -16,7 +16,7 @@ function vm4st(words) {
 
 		stack = [],  // main/value stack
 		/*NOMANGL*/o = n=>stack.splice(-(n||1)), // p[o]p
-		/*NOMANGL*/u = v=>stack.push(v),    // p[u]sh
+		/*NOMANGL*/u = v=>stack.push(v),         // p[u]sh
 
 		rstack = [], // return/loop stack
 
@@ -42,10 +42,8 @@ function vm4st(words) {
 		}
 		;
 
-	//function DOP(s) { console.log(s + " at " + ops.length); }
-
-	// OPCODE 0: return
-	push_op(__top=>{
+	/*ST4{STATIC*/
+	push_op(__top=>{ // return
 		for (;;) {
 			__top = rstack.pop();
 			if (typeof __top == "number") continue; // unroll past loop related rstack entries
@@ -54,23 +52,20 @@ function vm4st(words) {
 			break;
 		}
 	});
+	// if/else/endif:
+	push_op(_ => o()[0] ? 0 : ifskip(2)); // if    : skip until "else" if popped value is false
+	push_op(_ => ifskip(3));              // else  : skip until "endif"
+	push_op(_ => 0);                      // endif : no-op; used as marker for ifskip()
+	/*ST4}STATIC*/
 
-	// OPCODE 1,2,3: if/else/endif
-	//DOP("if/then/else");
-	push_op(_ => o()[0] ? 0 : ifskip(2)); // if (if false skip until "else")
-	push_op(_ => ifskip(3));                 // else (skip until "endif")
-	push_op(_ => 0);                         // endif (no-op but still used as marker for ifskip())
+	/*ST4:PUSH_IMM*/push_op(_ => u(current_oparg) * 0);
 
-	// OPCODE 4: load constant
-	//DOP("load constant");
-	push_op(_ => u(current_oparg) * 0);
-
-	// OPCODE 5,6: times,loop
-	push_op(_ => {
+	/*ST4{TIMES_LOOP*/
+	push_op(_ => { // times
 		rstack.push(o());
 		rstack.push(pc[1]);
 	});
-	push_op(_ => {
+	push_op(_ => { // loop
 		if (--rstack[rstack.length-2]) {
 			pc[1] = rstack[rstack.length-1];
 		} else {
@@ -78,8 +73,9 @@ function vm4st(words) {
 			rstack.pop();
 		}
 	});
+	/*ST4}TIMES_LOOP*/
 
-	// OPCODE 7,8: do,while
+	/*ST4{DO_WHILE*/
 	push_op(_ => {
 		rstack.push(pc[1]);
 	});
@@ -90,28 +86,24 @@ function vm4st(words) {
 			rstack.pop();
 		}
 	});
+	/*ST4}DO_WHILE*/
 
-	// OPCODE 9,10: call word
-	push_op(_ => call_word(current_oparg)); // immediate call
-	push_op(_ => call_word(o())); // indirect call
+	/*ST4:CALL_IMM*/push_op(_ => call_word(current_oparg)); // immediate call
+	/*ST4:CALL_POP*/push_op(_ => call_word(o())); // indirect/popped call
 
-	// built-in words
-	push_op(__a => { __a = o(); u(__a); u(__a); }); // dup (a -- a a)
+	/*ST4:DUP*/push_op(__a => { __a = o(); u(__a); u(__a); }); // dup (a -- a a)
 	//push_op(_ => { u(stack[stack.length-1]) }); // dup (a -- a a)
-	push_op(__a => { o() }); // pop (a --)
-	push_op((__a,__b) => { __a = o(); __b = o(); u(__b); u(__a); }); // exchange (a b -- b a)
-	push_op((__a,__b,__c) => { __a = o(); __b = o(); __c = o(); u(__b); u(__c); u(__a); }); // trirot (a b c -- b c a)
+	/*ST4:POP*/push_op(__a => { o() }); // pop (a --)
+	/*ST4:EXCHANGE*/push_op((__a,__b) => { __a = o(); __b = o(); u(__b); u(__a); }); // exchange (a b -- b a)
+	/*ST4:TRIROT*/push_op((__a,__b,__c) => { __a = o(); __b = o(); __c = o(); u(__b); u(__c); u(__a); }); // trirot (a b c -- b c a)
+	/*ST4:ASSERT*/push_op(_ => { let v = o(); if (!v) throw new Error("ASSERTION FAILED"); })
 
-	// binary operators
-	//DOP("binops");
-	for (op of ssplit("+ - * / % & | ^ < > == != >= <= << >> **")) push_opn1_expr(2, "a"+op+"b");
-	for (op of ssplit("sqrt sin cos log")) push_opn1_expr(1, "Math."+op+"(a)");
-	//push_opn1_expr(2, "Math.atan2(a,b)");
-	//DOP("end");
+	for (op of ssplit(ST4_INFIX)) push_opn1_expr(2, "a"+op+"b");
+	for (op of ST4_PREFIX) push_opn1_expr(1, op+"a");
+	for (op of ssplit(ST4_MATH1)) push_opn1_expr(1, "Math."+op+"(a)");
 
 	for (;advance(),!ops[current_opcode]();); // execution loop
 
-	console.log(stack);
+	return stack;
+	//console.log(stack);
 }
-
-export_vm4st = vm4st;

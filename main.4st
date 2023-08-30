@@ -1,9 +1,53 @@
-( hello comment )
 ( #include "fr1st.4st" )
 
 :square ( x -- x^2 )
+   dup *
+;
+
+:t0
    :inner_word
       dup +
    ;
-   dup *
+   `inner_word
+;
+
+::api_ding
+;
+
+::api_dong
+;
+
+( word definitions beginning with "main_" are entrypoints )
+:main_test0
+   ( TODO )
+;
+
+:main_test1
+   ( TODO )
+   1 square
+;
+
+( word definitions beginning with "test_" are unit tests )
+:test_0
+   :sqrsqr ( x -- x^2^2 )
+      square square
+   ;
+   1 square   1  = assert
+   2 square   4  = assert
+   3 square   9  = assert
+   4 square   16 = assert
+   5 square   25 = assert
+
+   2 sqrsqr   16 = assert
+   3 sqrsqr   81 = assert
+;
+
+:test_1
+   ::api_one 0 assert ;
+   ::api_two 0 assert ;
+   ::api_three 1 assert ;
+   ::api_four 0 assert ;
+   :not_this_one 0 assert;
+
+   `api_two 1 + call
 ;
