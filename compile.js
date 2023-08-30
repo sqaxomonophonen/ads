@@ -289,6 +289,7 @@ function process_4st_file(path) {
 	function trace_program(match_fn) {
 		const lift_set = {};
 
+		let export_word_indices = [];
 		let prg_words = [];
 		function lift(word_stack) {
 			if (word_stack.length < 2) throw new Error("ASSERTION ERROR: top-level cannot be lifted");
@@ -329,12 +330,14 @@ function process_4st_file(path) {
 				}
 				if (!found) throw new Error("word not found in scope: " + name);
 			}
+			if (word.do_export) export_word_indices.push(prg_words.length);
 			prg_words.push([word.name, word.tokens]);
 		}
 
 		function rec(word_stack) {
 			const word = word_stack[word_stack.length-1];
 			if (word.name && match_fn(word_stack.length-2, word.name)) {
+				word.do_export = true;
 				lift(word_stack);
 			}
 			for (let subword of word.words || []) rec([...word_stack, subword]);
@@ -350,8 +353,50 @@ function process_4st_file(path) {
 			}
 		}
 
+		let op_map = {};
+		let op_idx = 0;
+		for (let i = 0; i < ISA.length; i++) {
+			const keep = (ISA[i][2] === ID && ISA[i][3] === "STATIC") || required_vm_op_ids[i];
+			if (keep) op_map[i] = op_idx++;
+		}
+
+		let vm_words = [];
+		for (const w of prg_words) {
+			let inst = [];
+			for (const t of w[1]) {
+				//console.log(t);
+				const opi = op_map[t[2][0]];
+				if (opi === undefined) throw new Error("op with no mappinG");
+				//console.log(opi);
+				switch (t[0]) {
+				case "BUILTIN_WORD":
+				case "OP1":
+					inst.push([opi]);
+					break;
+				case "PUSH_NUMBER_IMM":
+					inst.push([opi, parseInt(t[1], 10)]); // XXX
+					break;
+				case "WORD":
+				case "PUSH_NUMBER_IMM_INDEX_OF_WORD": {
+					let word_index = -1;
+					for (let i1 = 0; i1 < prg_words.length; i1++) {
+						if (prg_words[i1][0] === t[1]) {
+							word_index = i1;
+						}
+					}
+					if (word_index === -1) throw new Error("not found: " + t[1]);
+					inst.push([opi, word_index]);
+				} break;
+				default:
+					throw new Error("unhandled tok: " + JSON.stringify(t));
+				}
+			}
+			vm_words.push(inst);
+		}
+
 		//required_vm_op_ids = Object.keys(required_vm_op_ids).map(x => parseInt(x,10)).sort((a,b)=>a-b);
 
+		let vm;
 		{
 			let piping = true;
 			const expr0 = /\/\*ST4([:{}_])([^*]+)\*\//;
@@ -421,24 +466,26 @@ function process_4st_file(path) {
 				}
 			}
 
-
 			const vm_src = pass_lines.join("\n");
-			//console.log(vm_src);
-			let vm = eval(vm_src);
-			vm([[]]);
+			vm = eval(vm_src);
 		}
 
 		return {
-			words: prg_words,
-			required_vm_op_ids: Object.keys(required_vm_op_ids).map(x => parseInt(x,10)).sort((a,b)=>a-b),
+			vm,
+			vm_words,
+			export_word_indices,
 		}
 	}
 
 	const test_prg = trace_program((depth,name) => name.startsWith("test_"));
-	console.log(test_prg);
+	//console.log(test_prg);
+	for (const i of test_prg.export_word_indices) {
+		let s = test_prg.vm(test_prg.vm_words, i);
+		console.log([i,s]);
+	}
 
 	const main_prg = trace_program((depth,name) => depth === 0 && name.startsWith("main_"));
-	console.log(main_prg);
+	//console.log(main_prg);
 
 }
 

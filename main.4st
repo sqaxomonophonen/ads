@@ -40,6 +40,7 @@
 
    2 sqrsqr   16 = assert
    3 sqrsqr   81 = assert
+   1 2 3
 ;
 
 :test_1
@@ -48,6 +49,5 @@
    ::api_three 1 assert ;
    ::api_four 0 assert ;
    :not_this_one 0 assert;
-
-   `api_two 1 + call
+   `api_three 4 2 0
 ;

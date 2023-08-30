@@ -7,12 +7,12 @@
 // eval()s, meaning they should not be mangled. also add the name to the
 // reserved=[] list above.
 
-(words) => {
+(words, entry) => {
 	let
 		current_opcode,
 		current_oparg,
 
-		pc = [words.length-1, 0], // set program counter tuple to "main"
+		pc = [entry, 0], // set program counter tuple to "main"
 
 		stack = [],  // main/value stack
 		/*NOMANGL*/o = n=>stack.splice(-(n||1)), // p[o]p
