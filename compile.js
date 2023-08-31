@@ -92,11 +92,6 @@ function process_songlist_file(path) {
 	// TODO
 }
 
-function process_aust_file(path) {
-	const src = open(path);
-	// TODO
-}
-
 function process_4st_file(path) {
 	const WORD=101, NUMBER=102, OP1=203, CALL=204;
 	const ID=201, INFIX=202, PREFIX=203, MATH1=211; // MATH2 would cover atan2... and...? imul? not worth it?
@@ -509,5 +504,4 @@ function process_4st_file(path) {
 //process_songlist_file("main.songlist");
 //console.log(__dirname)
 
-TIME("aust processing" , _=>process_aust_file("main.aust"));
 TIME("4st processing"  , _=>process_4st_file("main.4st"));

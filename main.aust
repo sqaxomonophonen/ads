@@ -1,4 +1,0 @@
-random = +(12345) ~ *(1103515245);
-linear2db(x) = 20*log10(x);
-duplicate(1,x) = x;
-duplicate(n,x) = x, duplicate(n-1,x);
