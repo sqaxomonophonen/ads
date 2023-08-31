@@ -86,12 +86,6 @@ function open(file) {
 	return { get, get_lines, mark, eat_while_match, skip_whitespace, skip_until_match_one_of, error, warn };
 }
 
-
-function process_songlist_file(path) {
-	const src = open(path);
-	// TODO
-}
-
 function process_4st_file(path) {
 	const WORD=101, NUMBER=102, OP1=203, CALL=204;
 	const ID=201, INFIX=202, PREFIX=203, MATH1=211; // MATH2 would cover atan2... and...? imul? not worth it?
@@ -500,8 +494,5 @@ function process_4st_file(path) {
 	const main_prg = trace_program((depth,name) => depth === 0 && name.startsWith("main_"));
 	//console.log(main_prg);
 }
-
-//process_songlist_file("main.songlist");
-//console.log(__dirname)
 
 TIME("4st processing"  , _=>process_4st_file("main.4st"));
