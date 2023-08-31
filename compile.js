@@ -223,7 +223,7 @@ function process_4st_file(path) {
 	let defword_state = 0;
 
 	function push_token(typ, value, vm_op) {
-		if (word_stack.length < 2 && typ !== DEFWORD) src.error("only word definitions (\":<word>\") are allowed at the top level");
+		if (word_stack.length < 2 && typ !== "WORD") src.error("only word definitions (\":<word>\") are allowed at the top level");
 		if (defword_state > 0) {
 			if (typ !== "WORD") src.error("expected WORD");
 			word.is_word_table_entry = defword_state === 2;
