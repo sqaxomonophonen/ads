@@ -89,14 +89,17 @@ function open(file) {
 function process_4st_file(path) {
 	const WORD=101, NUMBER=102, OP1=203, CALL=204;
 	const ID=201, INFIX=202, PREFIX=203, MATH1=211; // MATH2 would cover atan2... and...? imul? not worth it?
-
 	const ISA = [
+
 		// these ops are always in the vm (ID=STATIC)
+
 		[   WORD    , "return"    ,  ID     ,  "STATIC"      ],
 		[   WORD    , "if"        ,  ID     ,  "STATIC"      ],
 		[   WORD    , "else"      ,  ID     ,  "STATIC"      ],
 		[   WORD    , "endif"     ,  ID     ,  "STATIC"      ],
+
 		// the remaining ops can be compiled out of the VM if unused:
+
 		[   NUMBER  ,             ,  ID     ,  "PUSH_IMM"    ],
 		[   WORD    , "times"     ,  ID     ,  "TIMES_LOOP"  ],
 		[   WORD    , "loop"      ,  ID     ,  "TIMES_LOOP"  ],
@@ -156,15 +159,10 @@ function process_4st_file(path) {
 		[   WORD    , "abs"       ,  MATH1  ,  "abs"         ],
 	];
 
-	let vm_prefix_ops = [];
-	let vm_infix_ops = [];
-	let vm_math1_ops = [];
-	let lang_one_char_ops = "";
-	let lang_builtin_word_to_vm_op_map = {};
-	let lang_one_char_to_vm_op_map = {};
+	const lang_one_char_to_vm_op_map = {};
+	const lang_builtin_word_to_vm_op_map = {};
 	let lang_number_vm_op;
 	let lang_call_vm_op;
-
 	for (let i = 0; i < ISA.length; i++) {
 		const line = ISA[i];
 		const [ ltype, lid, vtype, vid ] = line;
@@ -173,32 +171,18 @@ function process_4st_file(path) {
 		case OP1:
 			if (lid.length !== 1) throw new Error("SANITY CHECK FAILURE: 1ch op with length != 1?!");
 			if (("a" <= lid && lid <= "z") || ("0" <= lid && lid <= "9")) throw new Error("FAILED SANITY CHECK: bad character " + lid);
-			lang_one_char_ops += lid;
 			lang_one_char_to_vm_op_map[lid] = vm_op;
 			break;
 		case WORD:
 			lang_builtin_word_to_vm_op_map[lid] = vm_op;
 			break;
 		case NUMBER: lang_number_vm_op = vm_op; break;
-		case CALL: lang_call_vm_op = vm_op; break;
+		case CALL:   lang_call_vm_op   = vm_op; break;
 		default: throw new Error("unhandled ltype/0 in  " + JSON.stringify(line));
 		}
-
-		switch (vtype) {
-		case ID: break;
-		case INFIX: vm_infix_ops.push(vid); break;
-		case PREFIX: vm_prefix_ops.push(vid); break;
-		case MATH1:  vm_math1_ops.push(vid); break;
-		default: throw new Error("unhandled vtype/2 in  " + JSON.stringify(line));
-		}
 	}
-
 	if (!lang_number_vm_op) throw new Error("SANITY CHECK FAIL: no 'number' VM op");
-	if (!lang_call_vm_op) throw new Error("SANITY CHECK FAIL: no 'call' VM op");
-
-	vm_prefix_ops.sort();
-	vm_infix_ops.sort();
-	vm_math1_ops.sort();
+	if (!lang_call_vm_op)   throw new Error("SANITY CHECK FAIL: no 'call' VM op");
 
 	const src = open(path);
 
@@ -209,19 +193,24 @@ function process_4st_file(path) {
 	delete(super_word.tokens); // throw error if code attempts to push tokens onto top-level word
 	const word_stack = [word];
 
-	let defword_state = 0;
+	const PUSH_NUMBER_IMM_INDEX_OF_WORD=401, BUILTIN_WORD=402, USER_WORD=403, PUSH_NUMBER_IMM=404, ONE_CHAR_OP=405;
 
+	let defword_state = 0;
+	let defword_table_serial = 1;
 	function push_token(typ, value, vm_op) {
-		if (word_stack.length < 2 && typ !== "WORD") src.error("only word definitions (\":<word>\") are allowed at the top level");
 		if (defword_state > 0) {
-			if (typ !== "WORD") src.error("expected WORD");
-			word.is_word_table_entry = defword_state === 2;
+			if (typ !== USER_WORD) src.error("expected USER_WORD");
+			if (defword_state === 2) {
+				word.is_word_table_entry = true;
+				word.table_serial = defword_table_serial++;
+			}
 			word.name = value;
 			const word_scope = word_stack[word_stack.length-2];
 			if (word_scope.words === undefined) word_scope.words = [];
 			word_scope.words.push(word);
 			defword_state = 0;
 		} else {
+			if (word_stack.length < 2) src.error("only word definitions (\":<word>\") are allowed at the top level");
 			word.tokens.push([typ, value, vm_op]);
 		}
 	}
@@ -244,21 +233,21 @@ function process_4st_file(path) {
 		} else if (ch === "`") { // push word index
 			src.mark();
 			const word = src.eat_while_match(["az","09","_"]);
-			push_token("PUSH_NUMBER_IMM_INDEX_OF_WORD", word, lang_number_vm_op);
+			push_token(PUSH_NUMBER_IMM_INDEX_OF_WORD, word, lang_number_vm_op);
 		} else if /*word*/ (match(ch, ["az"])) {
 			const word = src.eat_while_match(["az","09","_"]);
 			const builtin_vm_op = lang_builtin_word_to_vm_op_map[word];
 			if (builtin_vm_op) {
-				push_token("BUILTIN_WORD", word, builtin_vm_op);
+				push_token(BUILTIN_WORD, word, builtin_vm_op);
 			} else {
-				push_token("WORD", word, lang_call_vm_op);
+				push_token(USER_WORD, word, lang_call_vm_op);
 			}
 		} else if /*number */ (match(ch, ["09","-","."])) {
 			// XXX number parser should be better:
 			//  - if "-" doesn't come after "e", consider it to be
 			//    the next token?
 			const number = src.eat_while_match(["09","-",".","e",":"]);
-			push_token("PUSH_NUMBER_IMM", number, lang_number_vm_op);
+			push_token(PUSH_NUMBER_IMM, number, lang_number_vm_op);
 		} else if /*word definition*/ (ch === ":") {
 			if (defword_state === 0) {
 				word = new_word();
@@ -270,8 +259,8 @@ function process_4st_file(path) {
 			if (word_stack.length === 0) src.error("left top-level word");
 			word_stack.pop();
 			word = word_stack[word_stack.length-1];
-		} else if (one_of(ch, lang_one_char_ops)) {
-			push_token("OP1", ch, lang_one_char_to_vm_op_map[ch]);
+		} else if (lang_one_char_to_vm_op_map[ch]) {
+			push_token(ONE_CHAR_OP, ch, lang_one_char_to_vm_op_map[ch]);
 		} else if /*comment*/ (ch === "(") {
 			comment_depth++;
 		} else {
@@ -287,19 +276,19 @@ function process_4st_file(path) {
 	let _lk_counter = 1;
 	function trace_program(match_fn) {
 		const lift_set = {};
-
-		let export_word_indices = [];
 		let prg_words = [];
 		function lift(word_stack) {
 			if (word_stack.length < 2) throw new Error("ASSERTION ERROR: top-level cannot be lifted");
 			const word = word_stack[word_stack.length-1];
+
 			if (word._lk === undefined) word._lk = _lk_counter++;
 			if (lift_set[word._lk]) return;
 			lift_set[word._lk] = true;
+
 			for (const token of word.tokens) {
 				const typ = token[0];
-				const is_w  = (typ === "WORD");
-				const is_wi = (typ === "PUSH_NUMBER_IMM_INDEX_OF_WORD");
+				const is_w  = (typ === USER_WORD);
+				const is_wi = (typ === PUSH_NUMBER_IMM_INDEX_OF_WORD);
 				if (!is_w && !is_wi) continue;
 				const name = token[1];
 				let found = false;
@@ -329,8 +318,7 @@ function process_4st_file(path) {
 				}
 				if (!found) throw new Error("word not found in scope: " + name);
 			}
-			if (word.do_export) export_word_indices.push(prg_words.length);
-			prg_words.push([word.name, word.tokens]);
+			prg_words.push(word);
 		}
 
 		function rec(word_stack) {
@@ -343,11 +331,10 @@ function process_4st_file(path) {
 		}
 		rec([super_word]);
 
-		let required_vm_ids = {};
-		let required_vm_other_ops = {};
+		const required_vm_ids = {};
+		const required_vm_other_ops = {};
 		for (const w of prg_words) {
-			const tokens = w[1];
-			for (const t of tokens) {
+			for (const t of w.tokens) {
 				const vm_op_id = t[2][0];
 				const line = ISA[vm_op_id];
 				if (line[2] === ID) {
@@ -366,27 +353,27 @@ function process_4st_file(path) {
 			if (keep) op_remap[i] = op_idx++;
 		}
 
-		let vm_words = [];
+		const vm_words = [];
 		for (const w of prg_words) {
 			let inst = [];
-			for (const t of w[1]) {
+			for (const t of w.tokens) {
 				//console.log(t);
 				const opi = op_remap[t[2][0]];
 				if (opi === undefined) throw new Error("op with no mapping");
 				//console.log(opi);
 				switch (t[0]) {
-				case "BUILTIN_WORD":
-				case "OP1":
+				case BUILTIN_WORD:
+				case ONE_CHAR_OP:
 					inst.push([opi]);
 					break;
-				case "PUSH_NUMBER_IMM":
+				case PUSH_NUMBER_IMM:
 					inst.push([opi, parseInt(t[1], 10)]); // XXX
 					break;
-				case "WORD":
-				case "PUSH_NUMBER_IMM_INDEX_OF_WORD": {
+				case USER_WORD:
+				case PUSH_NUMBER_IMM_INDEX_OF_WORD: {
 					let word_index = -1;
 					for (let i1 = 0; i1 < prg_words.length; i1++) {
-						if (prg_words[i1][0] === t[1]) {
+						if (prg_words[i1].name === t[1]) {
 							word_index = i1;
 						}
 					}
@@ -400,7 +387,8 @@ function process_4st_file(path) {
 			vm_words.push(inst);
 		}
 
-		//required_vm_op_ids = Object.keys(required_vm_op_ids).map(x => parseInt(x,10)).sort((a,b)=>a-b);
+		const export_word_indices = [];
+		for (let i = 0; i < prg_words.length; i++) if (prg_words[i].do_export) export_word_indices.push(i);
 
 		let vm, vm_src;
 		{
@@ -418,7 +406,6 @@ function process_4st_file(path) {
 						xs.push(ISA[i][3]);
 					}
 					if (xs.length === 0) return;
-					xs.sort();
 					pass_lines.push(line.replace(id, JSON.stringify(xs.join(join))));
 				}
 
@@ -495,4 +482,8 @@ function process_4st_file(path) {
 	//console.log(main_prg);
 }
 
-TIME("4st processing"  , _=>process_4st_file("main.4st"));
+function TIME_4ST_PROCESS(file) {
+	TIME("4st processing:" + file  , _=>process_4st_file(file));
+}
+
+TIME_4ST_PROCESS("main.4st");
