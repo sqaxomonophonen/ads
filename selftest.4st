@@ -1,0 +1,59 @@
+: test_arithmetic
+   2 3 +   5 = assert
+   2 3 *   6 = assert
+   6 2 /   3 = assert
+   6 2 -   4 = assert
+;
+
+
+: test_math
+   1764 sqrt  42 = assert
+   0    cos    1 = assert
+   1024 log2  10 = assert
+   ( -420 abs  420 = assert ) ( FIXME negative immediate number values are currently broken )
+;
+
+
+: test_branches
+   : branch
+      if 420 else 666 endif
+   ;
+   1 branch  420 = assert
+   0 branch  666 = assert
+
+   : nested
+      if
+         if 1 else 2 endif
+      else
+         if 3 else 4 endif
+      endif
+   ;
+
+   1 1 nested    1 = assert
+   0 1 nested    2 = assert
+   1 0 nested    3 = assert
+   0 0 nested    4 = assert
+
+;
+
+
+: test_word_tables
+
+   ( "api_three" is the only word that doesn't "blow up" when called. it's part
+   of a "word table" (double-colon prefix) which is good for "indirect calls" )
+
+   :: api_one 0 assert ;
+   :: api_two 0 assert ;
+   :: api_three 1 assert 42 ;
+   :: api_four 0 assert ;
+
+   : not_this_one 0 assert;
+
+   api_three            42 = assert
+   api_three            42 = assert
+   `api_three call      42 = assert
+   `api_two 1 + call    42 = assert
+   `api_one 2 + call    42 = assert
+   `api_four 1 - call   42 = assert
+;
+

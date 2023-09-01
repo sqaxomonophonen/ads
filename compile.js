@@ -62,8 +62,18 @@ function open(file) {
 		return ch;
 	}
 
+	const get_pos = () => "line " + line + ", column " + (cursor - cursor_at_beginning_of_line);
+	function warn(msg) { console.warn("WARNING at " + get_pos() + ": " + msg); };
+	function error(msg) { throw new Error("at " + get_pos() + ": " + msg); };
+	const get_lines = () => source.split("\n")
+	function mark() { cursor_mark = cursor; }
+
 	function eat_while_match(pattern) {
-		while (match(get(), pattern)) {};
+		for (;;) {
+			const ch = get();
+			if (ch === undefined) error("ate past EOF");
+			if (!match(ch, pattern)) break;
+		}
 		cursor--;
 		return source.slice(cursor_mark, cursor);
 	}
@@ -76,12 +86,6 @@ function open(file) {
 	function skip_until_match_one_of(chars) {
 		while (!one_of(get(), chars)) {};
 	}
-
-	const get_pos = () => "line " + line + ", column " + (cursor - cursor_at_beginning_of_line);
-	function warn(msg) { console.warn("WARNING at " + get_pos() + ": " + msg); };
-	function error(msg) { throw new Error("at " + get_pos() + ": " + msg); };
-	const get_lines = () => source.split("\n")
-	function mark() { cursor_mark = cursor; }
 
 	return { get, get_lines, mark, eat_while_match, skip_whitespace, skip_until_match_one_of, error, warn };
 }
@@ -184,27 +188,35 @@ function process_4st_file(path) {
 	if (!lang_number_vm_op) throw new Error("SANITY CHECK FAIL: no 'number' VM op");
 	if (!lang_call_vm_op)   throw new Error("SANITY CHECK FAIL: no 'call' VM op");
 
-	const src = open(path);
-
 	const new_word = () => ({ tokens: [] });
 
 	let word = new_word();
-	const super_word = word;
-	delete(super_word.tokens); // throw error if code attempts to push tokens onto top-level word
+	const root_word = word;
+	delete(root_word.tokens); // throw error if code attempts to push tokens onto top-level word
 	const word_stack = [word];
 
 	const PUSH_NUMBER_IMM_INDEX_OF_WORD=401, BUILTIN_WORD=402, USER_WORD=403, PUSH_NUMBER_IMM=404, ONE_CHAR_OP=405;
 
+	const src = open(path);
+
 	let defword_state = 0;
 	let defword_table_serial = 1;
+	let word_sort_key_major = 0, word_sort_key_minor = 0;
 	function push_token(typ, value, vm_op) {
 		if (defword_state > 0) {
 			if (typ !== USER_WORD) src.error("expected USER_WORD");
-			if (defword_state === 2) {
+			word.name = value;
+			word.sort_key = [word_sort_key_major, word_sort_key_minor];
+			if (defword_state === 1) {
+				word_sort_key_major++;
+				word_sort_key_minor = 0;
+			} else if (defword_state === 2) {
 				word.is_word_table_entry = true;
 				word.table_serial = defword_table_serial++;
+				word_sort_key_minor++;
+			} else {
+				throw new Error("unexpected defword state " + defword_state);
 			}
-			word.name = value;
 			const word_scope = word_stack[word_stack.length-2];
 			if (word_scope.words === undefined) word_scope.words = [];
 			word_scope.words.push(word);
@@ -234,7 +246,7 @@ function process_4st_file(path) {
 			src.mark();
 			const word = src.eat_while_match(["az","09","_"]);
 			push_token(PUSH_NUMBER_IMM_INDEX_OF_WORD, word, lang_number_vm_op);
-		} else if /*word*/ (match(ch, ["az"])) {
+		} else if /*word*/ (match(ch, ["az","_"])) {
 			const word = src.eat_while_match(["az","09","_"]);
 			const builtin_vm_op = lang_builtin_word_to_vm_op_map[word];
 			if (builtin_vm_op) {
@@ -242,7 +254,7 @@ function process_4st_file(path) {
 			} else {
 				push_token(USER_WORD, word, lang_call_vm_op);
 			}
-		} else if /*number */ (match(ch, ["09","-","."])) {
+		} else if /*number */ (match(ch, ["09","."])) { // XXX how to do negative numbers? "-420" conflicts with "-" one-char operator
 			// XXX number parser should be better:
 			//  - if "-" doesn't come after "e", consider it to be
 			//    the next token?
@@ -268,8 +280,10 @@ function process_4st_file(path) {
 		}
 	}
 
+	if (comment_depth !== 0) src.error("unterminated comment");
+
 	if (word_stack.length !== 1) src.error("word definition was not terminated");
-	if (word !== super_word) throw new Error("bad state");
+	if (word !== root_word) throw new Error("bad state");
 
 	const vm4stub_lines = open("vm4stub.js").get_lines();
 
@@ -329,7 +343,14 @@ function process_4st_file(path) {
 			}
 			for (let subword of word.words || []) rec([...word_stack, subword]);
 		}
-		rec([super_word]);
+		rec([root_word]);
+
+		prg_words.sort((a,b) => {
+			const d0 = a.sort_key[0] - b.sort_key[0];
+			if (d0 !== 0) return d0;
+			const d1 = a.sort_key[1] - b.sort_key[1];
+			return d1;
+		});
 
 		const required_vm_ids = {};
 		const required_vm_other_ops = {};
@@ -486,4 +507,5 @@ function TIME_4ST_PROCESS(file) {
 	TIME("4st processing:" + file  , _=>process_4st_file(file));
 }
 
-TIME_4ST_PROCESS("main.4st");
+TIME_4ST_PROCESS("selftest.4st");
+//TIME_4ST_PROCESS("main.4st");
