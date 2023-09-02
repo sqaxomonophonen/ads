@@ -502,15 +502,17 @@ function process_4st_file(path) {
 	const test_prg = trace_program((depth,name) => name.startsWith("test_"));
 	//console.log(test_prg);
 	for (const word_index of test_prg.export_word_indices) {
+		const word_name = test_prg.export_word_names[word_index];
 		try {
 			let [stack,rstack] = test_prg.vm(test_prg.vm_words, word_index);
 			if (stack.length !== 0 || rstack.length !== 0)  throw new Error("unclean stack after test: " + JSON.stringify([stack,"/R",rstack]));
+			console.log("TEST " + word_name + " OK");
 		} catch (err) {
-			console.log("TEST ERROR in :" + test_prg.export_word_names[word_index] + " : " + err);
+			console.log("TEST ERROR in :" + word_name + " : " + err);
 		}
 	}
 
-	const main_prg = trace_program((depth,name) => depth === 0 && name.startsWith("main_"));
+	//const main_prg = trace_program((depth,name) => depth === 0 && name.startsWith("main_"));
 	//console.log(main_prg);
 }
 
