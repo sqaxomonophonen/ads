@@ -101,7 +101,7 @@
 	/*ST4:TRIROT*/push_op((__a,__b,__c) => { __a = o(); __b = o(); __c = o(); u(__b); u(__c); u(__a); }); // trirot (a b c -- b c a)
 	/*ST4{DEBUG*/
 	push_op(_ => { if (!o()) throw new Error("ASSERTION FAILED"); })
-	push_op(_ => { console.log("STACK", stack); });
+	push_op(_ => { console.log("STACK", stack, "/R", rstack); });
 	/*ST4}DEBUG*/
 
 	for (op of ssplit(ST4_INFIX))  push_opn1_expr(2, "a"+op+"b");

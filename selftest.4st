@@ -60,6 +60,14 @@
 ;
 
 
+: test_do_while
+   1
+   do
+      2 *
+   dup 5000 lt while
+   8192 = assert
+;
+
 : test_word_tables
 
    ( "api_three" is the only word that doesn't "blow up" when called. it's part
