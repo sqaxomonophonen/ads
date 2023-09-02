@@ -115,7 +115,7 @@ function open(file) {
 
 function process_4st_file(path) {
 	const WORD=101, NUMBER=102, OP1=203, CALL=204;
-	const ID=201, INFIX=202, PREFIX=203, MATH1=211; // MATH2 would cover atan2... and...? imul? not worth it?
+	const ID=201, INFIX=202, PREFIX=203, MATH1=211, USRWORD=299; // MATH2 would cover atan2... and...? imul? not worth it?
 	const ISA = [
 		// NOTE: ISA order must match vm4stub.js order
 
@@ -199,6 +199,8 @@ function process_4st_file(path) {
 
 		[   WORD    , "assert"    ,  ID     ,  "DEBUG"       ],
 		[   WORD    , "dump"      ,  ID     ,  "DEBUG"       ],
+
+		[   OP1     , "$"         ,  USRWORD,  "dollar"      ], // user-defined operator?
 	];
 
 	const lang_one_char_to_vm_op_map = {};
@@ -261,7 +263,11 @@ function process_4st_file(path) {
 			defword_state = 0;
 		} else {
 			if (word_stack.length < 2) src.error("only word definitions (\":<word>\") are allowed at the top level");
-			word.tokens.push([typ, value, vm_op]);
+			if (vm_op[1] === USRWORD) {
+				word.tokens.push([USER_WORD, vm_op[2], lang_call_vm_op]);
+			} else {
+				word.tokens.push([typ, value, vm_op]);
+			}
 		}
 	}
 

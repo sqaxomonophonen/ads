@@ -6,3 +6,11 @@
    3 2 e10  300    = assert
    3 3 e10  3000   = assert
 ;
+
+: dollar
+   69
+;
+
+: test_dollar
+   $ 69 = assert
+;
