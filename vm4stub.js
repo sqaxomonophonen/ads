@@ -21,12 +21,12 @@
 		rstack = [], // return/loop stack
 
 		advance = __tup => [current_opcode, current_oparg] = words[pc[0]][pc[1]++] || [0/*<-implicit return at end of instruction string*/], // get next instruction
-		ifskip = (until_op, __depth) => {
+		ifskip = (__depth) => {
 			__depth = 0;
 			for (;;) {
-				// advance until until_op:
 				advance();
-				if (!__depth && current_opcode == until_op) break;
+				// stop at "else" or "endif" when not nested:
+				if (!__depth && (current_opcode == 2 || current_opcode == 3)) break;
 				// skip over nested if...endif:
 				__depth += (current_opcode == 1) - (current_opcode == 3); // "if" increments depth, "endif" decrements
 				//__depth += [,1,,-1][current_opcode]|0; // not shorter after uglify
@@ -53,9 +53,9 @@
 		}
 	});
 	// if/else/endif:
-	push_op(_ => o()[0] ? 0 : ifskip(2)); // if    : skip until "else" if popped value is false
-	push_op(_ => ifskip(3));              // else  : skip until "endif"
-	push_op(_ => 0);                      // endif : no-op; used as marker for ifskip()
+	push_op(_ => o()[0] ? 0 : ifskip()); // if    : skip until "else" if popped value is false
+	push_op(_ => ifskip());              // else  : skip until "endif"
+	push_op(_ => 0);                     // endif : no-op; used as marker for ifskip()
 	/*ST4}STATIC*/
 
 	/*ST4:PUSH_IMM*/push_op(_ => u(current_oparg) * 0);
