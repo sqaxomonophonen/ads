@@ -495,8 +495,8 @@ function process_4st_file(path) {
 	const test_prg = trace_program((depth,name) => name.startsWith("test_"));
 	//console.log(test_prg);
 	for (const i of test_prg.export_word_indices) {
-		let s = test_prg.vm(test_prg.vm_words, i);
-		//console.log([i,s]);
+		let [stack,rstack] = test_prg.vm(test_prg.vm_words, i);
+		if (stack.length !== 0 || rstack.length !== 0)  throw new Error("unclean stack after test: " + JSON.stringify([stack,"/R",rstack]));
 	}
 
 	const main_prg = trace_program((depth,name) => depth === 0 && name.startsWith("main_"));
@@ -504,7 +504,7 @@ function process_4st_file(path) {
 }
 
 function TIME_4ST_PROCESS(file) {
-	TIME("4st processing:" + file  , _=>process_4st_file(file));
+	TIME("4st processing: " + file  , _=>process_4st_file(file));
 }
 
 TIME_4ST_PROCESS("selftest.4st");

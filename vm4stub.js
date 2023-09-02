@@ -110,5 +110,5 @@
 
 	for (;advance(),!ops[current_opcode]();); // execution loop
 
-	return stack;
+	return [stack, rstack]; // XXX don't bother in "production"
 }
