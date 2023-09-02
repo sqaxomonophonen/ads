@@ -1,3 +1,9 @@
+: dup    0 pick ;
+: over   1 pick ;
+: swap   2 nrot ;
+: rot    3 nrot ;
+: tro    3 ntro ;
+
 : e10 ( x y -- x*10^y )
    10 swap ^ *
 ;
@@ -6,6 +12,7 @@
    3 2 e10  300    = assert
    3 3 e10  3000   = assert
 ;
+
 
 : EXPR_CONST 0 ;
 : EXPR_INPUT 1 ;
