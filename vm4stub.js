@@ -100,13 +100,14 @@
 
 	/*ST4:PICK*/push_op(_=> u(stack_pick(stack_pop())));
 	/*ST4:DROP*/push_op(__a => { stack_pop() }); // drop (   a --       )
-	const nrot = (n, d, __xs, __i) => {
-		__xs = s(n);
-		for (__i=0; __i<n; __i++) u(__xs[(__i+n+d)%n])
+	const rotate = (direction, __n, __xs, __i) => {
+		__n = stack_pop();
+		__xs = s(__n);
+		for (__i=0; __i<__n; __i++) u(__xs[(__i+__n+direction)%__n])
 	};
 	/*
-	const nrot = (n, __i, __i0, __tmp, __i1) => {
-		// (PERF) possibly faster inline version of nrot, but more
+	const rotate = (n, __i, __i0, __tmp, __i1) => {
+		// (PERF) possibly faster inline version of rotate, but more
 		// expensive in size
 		__i0 = stack.length - n;
 		__tmp = stack[__i0];
@@ -114,8 +115,8 @@
 		stack[__i0 + n - 1] = __tmp;
 	};
 	*/
-	/*ST4:NROT*/push_op(_=>nrot(stack_pop(),1));
-	/*ST4:NTRO*/push_op(_=>nrot(stack_pop(),-1));
+	/*ST4:NROT*/push_op(_=>rotate(1));
+	/*ST4:NTRO*/push_op(_=>rotate(-1));
 
 	for (op of ssplit(ST4_INFIX))  push_opn1_expr(2, "a"+op+"b");
 	for (op of ST4_PREFIX)         push_opn1_expr(1, op+"a");
