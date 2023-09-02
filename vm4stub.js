@@ -108,7 +108,8 @@
 	for (op of ST4_PREFIX)         push_opn1_expr(1, op+"a");
 	for (op of ssplit(ST4_MATH1))  push_opn1_expr(1, "Math."+op+"(a)");
 
-	for (;advance(),!ops[current_opcode]();); // execution loop
+	let n_ops_executed = 0;
+	for (;advance(),!ops[current_opcode](); n_ops_executed++); // execution loop
 
-	return [stack, rstack]; // XXX don't bother in "production"
+	return [n_ops_executed, stack, rstack]; // XXX don't bother in "production"
 }

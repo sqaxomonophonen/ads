@@ -521,9 +521,9 @@ function process_4st_file(path) {
 	for (const word_index of test_prg.export_word_indices) {
 		const word_name = test_prg.export_word_names[word_index];
 		try {
-			let [stack,rstack] = test_prg.vm(test_prg.vm_words, word_index);
+			let [n_ops, stack, rstack] = test_prg.vm(test_prg.vm_words, word_index);
 			if (stack.length !== 0 || rstack.length !== 0)  throw new Error("unclean stack after test: " + JSON.stringify([stack,"/R",rstack]));
-			console.log("TEST " + word_name + " OK");
+			console.log("TEST " + word_name + " OK (" + n_ops + "op)");
 		} catch (err) {
 			console.log("TEST ERROR in :" + word_name + " : " + err);
 		}
