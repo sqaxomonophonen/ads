@@ -19,6 +19,7 @@
    arrnew arrpush ( work expressions -- n [n,[]] )
    arrnew arrpush ( delay tuples     -- n [n,[],[]] )
 
+   ( output expressions: )
    arrnew ( -- n [n,[],[]] [] ) trirot ( -- [n,[],[]] [] n ) times
       arrnew EXPR_INPUT arrpush ( -- [n,[],[]] [..] [EXPR_INPUT] )
       exchange  ( -- .. [EXPR_INPUT] [..])
@@ -43,10 +44,11 @@
    arrnew arrpush ( work expressions -- data [0,[]] )
    arrnew arrpush ( delay tuples     -- data [0,[],[]] )
 
+   ( output expressions: )
    arrnew EXPR_CURVE arrpush ( -- data [0,[],[]] [EXPR_CURVE] )
-   trirot                    ( -- [0,[],[]] [EXPR_CURVE] data )
-   arrpush                   ( -- [0,[],[]] [EXPR_CURVE,data] )
-   arrpush                   ( -- [0,[],[],[EXPR_CURVE,data]] )
+   trirot arrpush            ( -- [0,[],[]] [EXPR_CURVE,data] )
+   arrnew exchange arrpush   ( -- [0,[],[]] [[EXPR_CURVE,data]] )
+   arrpush                   ( -- [0,[],[],[[EXPR_CURVE,data]]] )
 ;
 
 : test_curvegen
