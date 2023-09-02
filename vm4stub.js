@@ -19,8 +19,8 @@
 		/*NOMANGL*/u = v=>0*stack.push(v),       // p[u]sh
 		stack_pop = _=>s(1)[0],                  // pop 1
 
-		stack_pick = n => stack[stack.length-n],
-		stack_top  = _ => stack_pick(1),
+		stack_pick = n => stack[stack.length-n-1],
+		stack_top  = _ => stack_pick(0),
 
 		rstack = [], // return/loop stack
 
@@ -98,7 +98,7 @@
 	/*ST4:CALL_IMM*/push_op(_ => call_word(current_oparg)); // immediate call
 	/*ST4:CALL_POP*/push_op(_ => call_word(stack_pop())); // indirect/popped call
 
-	/*ST4:PICK*/push_op(_=> u(stack_pick(1+stack_pop())));
+	/*ST4:PICK*/push_op(_=> u(stack_pick(stack_pop())));
 	/*ST4:DROP*/push_op(__a => { stack_pop() }); // drop (   a --       )
 	const nrot = (n, d, __xs, __i) => {
 		__xs = s(n);
@@ -123,11 +123,11 @@
 
 	/*ST4:arrnew*/     push_op(_ => u([]));
 	/*ST4:arrlen*/     push_op(_ => u(stack_top().length));
-	/*ST4:arrpush*/    push_op(_ => 0*stack_pick(2).push(stack_pop()));
+	/*ST4:arrpush*/    push_op(_ => 0*stack_pick(1).push(stack_pop()));
 	/*ST4:arrpop*/     push_op(_ => u(stack_top().pop()));
-	/*ST4:arrunshift*/ push_op(_ => 0*stack_pick(2).unshift(stack_pop()));
+	/*ST4:arrunshift*/ push_op(_ => 0*stack_pick(1).unshift(stack_pop()));
 	/*ST4:arrshift*/   push_op(_ => u(stack_top().shift()));
-	/*ST4:arrget*/     push_op(_ => u(stack_pick(2)[stack_pop()]));
+	/*ST4:arrget*/     push_op(_ => u(stack_pick(1)[stack_pop()]));
 	/*ST4:arrset*/     push_op((__k,__v) => { [__k,__v] = s(2); stack_top()[__k] = __v; });
 	/*ST4:arrjoin*/    push_op((__a,__b) => { [__a,__b] = s(2); u([...__a, ...__b]); });
 	/*ST4:arrsplit*/   push_op((__pivot, __xs) => { __pivot = stack_pop(); __xs = stack_pop(); u(__xs.slice(0,__pivot)); u(__xs.slice(__pivot)); });
