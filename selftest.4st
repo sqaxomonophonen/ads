@@ -1,3 +1,5 @@
+#include lib.4st
+
 : test_arithmetic
    2 3 +   5 = assert
    6 2 -   4 = assert
@@ -5,15 +7,6 @@
    6 2 /   3 = assert
    5 3 %   2 = assert
    3 4 ^  81 = assert
-;
-
-: e10 ( x y -- x*10^y )
-   10 exchange ^ *
-;
-
-: test_e10
-   3 2 e10  300    = assert
-   3 3 e10  3000   = assert
 ;
 
 : test_math

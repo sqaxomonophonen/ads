@@ -1,0 +1,8 @@
+: e10 ( x y -- x*10^y )
+   10 exchange ^ *
+;
+
+: test_e10
+   3 2 e10  300    = assert
+   3 3 e10  3000   = assert
+;

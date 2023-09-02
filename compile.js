@@ -46,27 +46,50 @@ const one_of = (ch, chars) => chars.indexOf(ch) >= 0;
 
 const WHITESPACE = " \t\n\r";
 
+// could be replaced by object lookup in browser?
+const RESOLVE_FILE = (filename) => fs.readFileSync(path.join(__dirname, filename), {"encoding": "utf8"});
+
 function open(file) {
-	const source = fs.readFileSync(path.join(__dirname, file), {"encoding": "utf8"});
-	let line = 1;
+	let file_stack = [];
 	let cursor_mark;
-	let cursor = 0;
-	let cursor_at_beginning_of_line = 0;
+
+	let top;
+
+	function set_top() { top = file_stack[file_stack.length-1]; };
+
+	function push_file(filename) {
+		file_stack.push({
+			filename,
+			line: 1,
+			cursor: 0,
+			cursor_at_beginning_of_line: 0,
+			src: RESOLVE_FILE(filename),
+		});
+		set_top();
+	}
+
+	function pop_file() {
+		file_stack.pop();
+		set_top();
+		return file_stack.length === 0;
+	}
+
+	push_file(file);
 
 	function get() {
-		const ch = source[cursor++];
-		if (ch === "\n" && cursor > cursor_at_beginning_of_line) {
-			line++;
-			cursor_at_beginning_of_line = cursor;
+		const ch = top.src[top.cursor++];
+		if (ch === "\n" && top.cursor > top.cursor_at_beginning_of_line) {
+			top.line++;
+			top.cursor_at_beginning_of_line = top.cursor;
 		}
 		return ch;
 	}
 
-	const get_pos = () => "line " + line + ", column " + (cursor - cursor_at_beginning_of_line);
+	const get_pos = () => "file " + top.filename + ", line " + top.line + ", column " + (top.cursor - top.cursor_at_beginning_of_line);
 	function warn(msg) { console.warn("WARNING at " + get_pos() + ": " + msg); };
 	function error(msg) { throw new Error("at " + get_pos() + ": " + msg); };
-	const get_lines = () => source.split("\n")
-	function mark() { cursor_mark = cursor; }
+	const get_lines = () => top.src.split("\n")
+	function mark() { cursor_mark = top.cursor; }
 
 	function eat_while_match(pattern) {
 		for (;;) {
@@ -74,20 +97,20 @@ function open(file) {
 			if (ch === undefined) error("ate past EOF");
 			if (!match(ch, pattern)) break;
 		}
-		cursor--;
-		return source.slice(cursor_mark, cursor);
+		top.cursor--;
+		return top.src.slice(cursor_mark, top.cursor);
 	}
 
 	function skip_whitespace() {
 		while (one_of(get(), WHITESPACE)) {};
-		cursor--;
+		top.cursor--;
 	}
 
 	function skip_until_match_one_of(chars) {
 		while (!one_of(get(), chars)) {};
 	}
 
-	return { get, get_lines, mark, eat_while_match, skip_whitespace, skip_until_match_one_of, error, warn };
+	return { push_file, pop_file, get, get_lines, mark, eat_while_match, skip_whitespace, skip_until_match_one_of, error, warn };
 }
 
 function process_4st_file(path) {
@@ -136,6 +159,8 @@ function process_4st_file(path) {
 		[   WORD    , "le"        ,  INFIX  ,  "<="          ],
 		[   WORD    , "not"       ,  PREFIX ,  "!"           ],
 		[   WORD    , "neg"       ,  PREFIX ,  "-"           ],
+
+		// math
 		[   WORD    , "sqrt"      ,  MATH1  ,  "sqrt"        ],
 		[   WORD    , "sin"       ,  MATH1  ,  "sin"         ],
 		[   WORD    , "cos"       ,  MATH1  ,  "cos"         ],
@@ -149,6 +174,7 @@ function process_4st_file(path) {
 		[   WORD    , "sign"      ,  MATH1  ,  "sign"        ],
 		[   WORD    , "abs"       ,  MATH1  ,  "abs"         ],
 
+		// arrays
 		[   WORD    , "arrnew"    ,  ID     ,  "arrnew"      ], //              -- []
 		[   WORD    , "arrlen"    ,  ID     ,  "arrlen"      ], //      [69,42] -- [69,42] 2
 		[   WORD    , "arrpush"   ,  ID     ,  "arrpush"     ], //       [1] 69 -- [1,69]
@@ -159,6 +185,15 @@ function process_4st_file(path) {
 		[   WORD    , "arrset"    ,  ID     ,  "arrset"      ], //    [8,9] 1 5 -- [8,5]
 		[   WORD    , "arrjoin"   ,  ID     ,  "arrjoin"     ], //  [1,2] [3,4] -- [1,2,3,4]
 		[   WORD    , "arrsplit"  ,  ID     ,  "arrsplit"    ], //  [1,2,3,4] 3 -- [1,2,3] [4]
+
+		// graph
+		[   WORD    , "thru"      ,  ID     ,  "thru"        ], //                  n -- n-input, n-output, pass-thru graph
+		[   WORD    , "curvegen"  ,  ID     ,  "curvegen"    ], //              curve -- curve generator graph
+		[   OP1     , "~"         ,  ID     ,  "compseq"     ], //                A B -- A~B (see FAUST sequential composition)
+		[   OP1     , ","         ,  ID     ,  "comppar"     ], //                A B -- A,B (see FAUST parallel composition)
+		[   WORD    , "swizz"     ,  ID     ,  "swizz"       ], // G i1 i2 ... i(n) n -- n-output graph picking outputs i1 to i(n) from graph G
+		[   OP1     , "@"         ,  ID     ,  "comprec"     ], //              A B n -- A@B with n samples of delay (similar to the FAUST "~" recursion operator)
+		[   WORD    , "boxen"     ,  ID     ,  "boxen"       ], //                  G -- G (encapsulate "unit" for performance reasons)
 
 		// debug symbols should be used only in tests
 
@@ -244,7 +279,19 @@ function process_4st_file(path) {
 			continue;
 		}
 		if (ch === undefined) {
-			break;
+			if (src.pop_file()) break;
+		} else if (ch === "#") {
+			src.mark();
+			const directive = src.eat_while_match(["az"]);
+			if (directive === "include") {
+				src.skip_whitespace();
+				src.mark();
+				const include_path = src.eat_while_match(["az","AZ",".","09","_"]);
+				src.push_file(include_path);
+			} else {
+				src.error("unhandled directive: " + directive);
+
+			}
 		} else if (ch === "`") { // push word index
 			src.mark();
 			const word = src.eat_while_match(["az","09","_"]);
