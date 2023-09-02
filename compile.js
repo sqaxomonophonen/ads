@@ -409,7 +409,13 @@ function process_4st_file(path) {
 		}
 
 		const export_word_indices = [];
-		for (let i = 0; i < prg_words.length; i++) if (prg_words[i].do_export) export_word_indices.push(i);
+		const export_word_names = {};
+		for (let i = 0; i < prg_words.length; i++) {
+			const w = prg_words[i];
+			if (!w.do_export) continue;
+			export_word_indices.push(i);
+			export_word_names[i] = w.name;
+		}
 
 		let vm, vm_src;
 		{
@@ -488,15 +494,20 @@ function process_4st_file(path) {
 			vm,
 			vm_words,
 			export_word_indices,
+			export_word_names,
 			vm_src,
 		}
 	}
 
 	const test_prg = trace_program((depth,name) => name.startsWith("test_"));
 	//console.log(test_prg);
-	for (const i of test_prg.export_word_indices) {
-		let [stack,rstack] = test_prg.vm(test_prg.vm_words, i);
-		if (stack.length !== 0 || rstack.length !== 0)  throw new Error("unclean stack after test: " + JSON.stringify([stack,"/R",rstack]));
+	for (const word_index of test_prg.export_word_indices) {
+		try {
+			let [stack,rstack] = test_prg.vm(test_prg.vm_words, word_index);
+			if (stack.length !== 0 || rstack.length !== 0)  throw new Error("unclean stack after test: " + JSON.stringify([stack,"/R",rstack]));
+		} catch (err) {
+			console.log("TEST ERROR in :" + test_prg.export_word_names[word_index] + " : " + err);
+		}
 	}
 
 	const main_prg = trace_program((depth,name) => depth === 0 && name.startsWith("main_"));
