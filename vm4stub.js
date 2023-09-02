@@ -1,4 +1,4 @@
-// npx uglify-js vm4stub.js --exprssion --compress --mangle eval,reserved=['s','o','u'] -o vm4stub.min.js
+// npx uglify-js vm4stub.js --exprssion --compress --mangle eval,reserved=['s','u'] -o vm4stub.min.js
 
 // convention: if a function argument begins with "__" it's not a real
 // argument, but for defining local variables
@@ -16,8 +16,11 @@
 
 		stack = [],  // main/value stack
 		/*NOMANGL*/s = n=>stack.splice(-n),      // pop n
-		/*NOMANGL*/o = _=>s(1)[0],               // p[o]p 1
-		/*NOMANGL*/u = v=>stack.push(v),         // p[u]sh
+		/*NOMANGL*/u = v=>0*stack.push(v),       // p[u]sh
+		stack_pop = _=>s(1)[0],                  // pop 1
+
+		stack_pick = n => stack[stack.length-n],
+		stack_top  = _ => stack_pick(1),
 
 		rstack = [], // return/loop stack
 
@@ -56,16 +59,16 @@
 		}
 	});
 	// if/else/endif:
-	push_op(_ => o() ? 0 : ifskip());    // if    : skip until "else" if popped value is false
-	push_op(_ => ifskip());              // else  : skip until "endif"
-	push_op(_ => 0);                     // endif : no-op; used as marker for ifskip()
+	push_op(_ => stack_pop() ? 0 : ifskip()); // if
+	push_op(_ => ifskip());                   // else
+	push_op(_ => 0);                          // endif : no-op; used as marker for ifskip()
 	/*ST4}STATIC*/
 
-	/*ST4:PUSH_IMM*/push_op(_ => u(current_oparg) * 0);
+	/*ST4:PUSH_IMM*/push_op(_ => u(current_oparg));
 
 	/*ST4{TIMES_LOOP*/
 	push_op(_ => { // times
-		rstack.push(o());
+		rstack.push(stack_pop());
 		rstack.push(pc[1]);
 	});
 	push_op(_ => { // loop
@@ -83,7 +86,7 @@
 		rstack.push(pc[1]);
 	});
 	push_op(_ => { // while
-		if (o()) {
+		if (stack_pop()) {
 			pc[1] = rstack[rstack.length-1];
 		} else {
 			rstack.pop();
@@ -92,11 +95,10 @@
 	/*ST4}DO_WHILE*/
 
 	/*ST4:CALL_IMM*/push_op(_ => call_word(current_oparg)); // immediate call
-	/*ST4:CALL_POP*/push_op(_ => call_word(o())); // indirect/popped call
+	/*ST4:CALL_POP*/push_op(_ => call_word(stack_pop())); // indirect/popped call
 
-	/*ST4:DUP*/push_op(__a => { __a = o(); u(__a); u(__a); }); // dup (a -- a a)
-	//push_op(_ => { u(stack[stack.length-1]) }); // dup (a -- a a)
-	/*ST4:POP*/push_op(__a => { o() }); // pop (a --)
+	/*ST4:DUP*/push_op(_ => u(stack[stack.length-1])); // dup (a -- a a)
+	/*ST4:POP*/push_op(__a => { stack_pop() }); // pop (a --)
 	const nrot = (n, __xs, __i) => {
 		__xs = s(n);
 		for (__i=0; __i<n; __i++) u(__xs[(__i+1)%n])
@@ -113,15 +115,27 @@
 	*/
 	/*ST4:EXCHANGE*/push_op(_=>nrot(2));
 	/*ST4:TRIROT*/push_op(_=>nrot(3));
-	/*ST4:NROT*/push_op(_=>nrot(o()));
-	/*ST4{DEBUG*/
-	push_op(_ => { if (!o()) throw new Error("ASSERTION FAILED"); })
-	push_op(_ => { console.log("STACK", stack, "/R", rstack); });
-	/*ST4}DEBUG*/
+	/*ST4:NROT*/push_op(_=>nrot(stack_pop()));
 
 	for (op of ssplit(ST4_INFIX))  push_opn1_expr(2, "a"+op+"b");
 	for (op of ST4_PREFIX)         push_opn1_expr(1, op+"a");
 	for (op of ssplit(ST4_MATH1))  push_opn1_expr(1, "Math."+op+"(a)");
+
+	/*ST4:arrnew*/     push_op(_ => u([]));
+	/*ST4:arrlen*/     push_op(_ => u(stack_top().length));
+	/*ST4:arrpush*/    push_op(_ => 0*stack_pick(2).push(stack_pop()));
+	/*ST4:arrpop*/     push_op(_ => u(stack_top().pop()));
+	/*ST4:arrunshift*/ push_op(_ => 0*stack_pick(2).unshift(stack_pop()));
+	/*ST4:arrshift*/   push_op(_ => u(stack_top().shift()));
+	/*ST4:arrget*/     push_op(_ => u(stack_pick(2)[stack_pop()]));
+	/*ST4:arrset*/     push_op((__k,__v) => { [__k,__v] = s(2); stack_top()[__k] = __v; });
+	/*ST4:arrjoin*/    push_op((__a,__b) => { [__a,__b] = s(2); u([...__a, ...__b]); });
+	/*ST4:arrsplit*/   push_op((__pivot, __xs) => { __pivot = stack_pop(); __xs = stack_pop(); u(__xs.slice(0,__pivot)); u(__xs.slice(__pivot)); });
+
+	/*ST4{DEBUG*/
+	push_op(_ => { if (!stack_pop()) throw new Error("ASSERTION FAILED"); })
+	push_op(_ => { console.log("STACK", stack, "/R", rstack); });
+	/*ST4}DEBUG*/
 
 	let n_ops_executed = 0;
 	for (;advance(),!ops[current_opcode](); n_ops_executed++); // execution loop

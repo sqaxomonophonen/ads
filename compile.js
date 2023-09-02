@@ -117,8 +117,6 @@ function process_4st_file(path) {
 		[   WORD    , "exchange"  ,  ID     ,  "EXCHANGE"    ],
 		[   WORD    , "trirot"    ,  ID     ,  "TRIROT"      ],
 		[   WORD    , "nrot"      ,  ID     ,  "NROT"        ],
-		[   WORD    , "assert"    ,  ID     ,  "DEBUG"       ],
-		[   WORD    , "dump"      ,  ID     ,  "DEBUG"       ],
 		[   OP1     , "+"         ,  INFIX  ,  "+"           ],
 		[   OP1     , "-"         ,  INFIX  ,  "-"           ],
 		[   OP1     , "*"         ,  INFIX  ,  "*"           ],
@@ -150,6 +148,22 @@ function process_4st_file(path) {
 		[   WORD    , "round"     ,  MATH1  ,  "round"       ],
 		[   WORD    , "sign"      ,  MATH1  ,  "sign"        ],
 		[   WORD    , "abs"       ,  MATH1  ,  "abs"         ],
+
+		[   WORD    , "arrnew"    ,  ID     ,  "arrnew"      ], //              -- []
+		[   WORD    , "arrlen"    ,  ID     ,  "arrlen"      ], //      [69,42] -- [69,42] 2
+		[   WORD    , "arrpush"   ,  ID     ,  "arrpush"     ], //       [1] 69 -- [1,69]
+		[   WORD    , "arrpop"    ,  ID     ,  "arrpop"      ], //       [1,69] -- [1] 69
+		[   WORD    , "arrunshift",  ID     ,  "arrunshift"  ], //       [1] 69 -- [69,1]
+		[   WORD    , "arrshift"  ,  ID     ,  "arrshift"    ], //       [1,69] -- [69] 1
+		[   WORD    , "arrget"    ,  ID     ,  "arrget"      ], //      [8,9] 1 -- [8,9] 9
+		[   WORD    , "arrset"    ,  ID     ,  "arrset"      ], //    [8,9] 1 5 -- [8,5]
+		[   WORD    , "arrjoin"   ,  ID     ,  "arrjoin"     ], //  [1,2] [3,4] -- [1,2,3,4]
+		[   WORD    , "arrsplit"  ,  ID     ,  "arrsplit"    ], //  [1,2,3,4] 3 -- [1,2,3] [4]
+
+		// debug symbols should be used only in tests
+
+		[   WORD    , "assert"    ,  ID     ,  "DEBUG"       ],
+		[   WORD    , "dump"      ,  ID     ,  "DEBUG"       ],
 	];
 
 	const lang_one_char_to_vm_op_map = {};

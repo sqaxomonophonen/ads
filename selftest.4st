@@ -135,7 +135,77 @@
 ;
 
 : test_rotations
-   1 2         exchange ( ab -- ba )      1 = assert  2 = assert
-   1 2 3       trirot   ( abc -- bca )    1 = assert  3 = assert  2 = assert
+   1 2         exchange ( ab   -- ba )    1 = assert  2 = assert
+   1 2       2 nrot     ( ab   -- ba )    1 = assert  2 = assert
+   1 2 3       trirot   ( abc  -- bca )   1 = assert  3 = assert  2 = assert
+   1 2 3     3 nrot     ( abc  -- bca )   1 = assert  3 = assert  2 = assert
    1 2 3 4   4 nrot     ( abcd -- bcda )  1 = assert  4 = assert  3 = assert  2 = assert
+;
+
+: test_arrays
+   arrnew                        arrlen 0 = assert                                          pop
+
+   : mkarr
+      arrnew   5 arrpush 6 arrpush 7 arrpush
+      arrlen 3 = assert
+   ;
+
+   mkarr
+   arrpop 7 = assert     arrpop 6 = assert     arrpop 5 = assert
+   pop
+
+   mkarr
+   arrshift 5 = assert   arrshift 6 = assert   arrshift 7 = assert
+   pop
+
+   mkarr
+   0 arrget 5 = assert
+   1 arrget 6 = assert
+   2 arrget 7 = assert
+   pop
+
+   mkarr
+   0 42 arrset
+   2 69 arrset
+   0 arrget 42 = assert
+   1 arrget  6 = assert
+   2 arrget 69 = assert
+   pop
+
+   arrnew
+   69 arrunshift
+   42 arrunshift
+   11 arrunshift
+   0 arrget 11 = assert
+   1 arrget 42 = assert
+   2 arrget 69 = assert
+   pop
+
+   mkarr
+   arrnew 69 arrpush 42 arrpush
+   arrjoin
+   mkarr
+   arrjoin
+   0 arrget 5 = assert
+   1 arrget 6 = assert
+   2 arrget 7 = assert
+   3 arrget 69 = assert
+   4 arrget 42 = assert
+   5 arrget 5 = assert
+   6 arrget 6 = assert
+   7 arrget 7 = assert
+   pop
+
+   mkarr mkarr arrjoin
+   4 arrsplit
+   arrlen 2 = assert
+   0 arrget 6 = assert
+   1 arrget 7 = assert
+   pop
+   arrlen 4 = assert
+   0 arrget 5 = assert
+   1 arrget 6 = assert
+   2 arrget 7 = assert
+   3 arrget 5 = assert
+   pop
 ;
