@@ -140,6 +140,8 @@ function process_4st_file(path) {
 		[   WORD    , "exchange"  ,  ID     ,  "EXCHANGE"    ],
 		[   WORD    , "trirot"    ,  ID     ,  "TRIROT"      ],
 		[   WORD    , "nrot"      ,  ID     ,  "NROT"        ],
+		[   WORD    , "tritro"    ,  ID     ,  "TRITRO"      ],
+		[   WORD    , "ntro"      ,  ID     ,  "NTRO"        ],
 		[   OP1     , "+"         ,  INFIX  ,  "+"           ],
 		[   OP1     , "-"         ,  INFIX  ,  "-"           ],
 		[   OP1     , "*"         ,  INFIX  ,  "*"           ],

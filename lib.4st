@@ -38,9 +38,8 @@
 ;
 
 : graph_curvegen
-   arrnew    ( -- data [] )
-   0 arrpush ( -- data [0] )
-
+   ( -- data [] )
+   arrnew 0 arrpush ( -- data [0] )
    arrnew arrpush ( work expressions -- data [0,[]] )
    arrnew arrpush ( delay tuples     -- data [0,[],[]] )
 
@@ -57,10 +56,17 @@
 ;
 
 : graph_compseq
-  ( TODO )
+   ( -- A B )
+   arrnew                    ( -- A B [] )
+   trirot                    ( -- B [] A )
+   0 arrget                  ( -- B [] A A[0] )
+   trirot exchange arrpush   ( -- B A [A[0]] )
+   trirot trirot             ( -- [A[0]] B A )
+   pop pop pop ( TODO )
 ;
 
 : test_compseq
+   2 thru 2 thru
    ~
 ;
 
