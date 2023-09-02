@@ -15,6 +15,25 @@
    ( -420 abs  420 = assert ) ( FIXME negative immediate number values are currently broken )
 ;
 
+: test_numbers
+   : e10 ( x y -- x*10^y )
+      10 exchange ^ *
+   ;
+
+   : test_e10  ( also a meta test of nested tests : )
+      3 2 e10  300    = assert
+      3 3 e10  3000   = assert
+   ;
+
+   : pi
+      314159 5 neg e10
+   ;
+
+   pi 3 gt assert
+   pi 4 lt assert
+   pi cos    9999 neg 4 neg e10   lt assert
+   pi cos   10000 neg 4 neg e10   gt assert
+;
 
 : test_branches
    : branch

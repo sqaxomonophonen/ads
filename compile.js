@@ -94,6 +94,7 @@ function process_4st_file(path) {
 	const WORD=101, NUMBER=102, OP1=203, CALL=204;
 	const ID=201, INFIX=202, PREFIX=203, MATH1=211; // MATH2 would cover atan2... and...? imul? not worth it?
 	const ISA = [
+		// NOTE: ISA order must match vm4stub.js order
 
 		// these ops are always in the vm (ID=STATIC)
 
@@ -129,9 +130,6 @@ function process_4st_file(path) {
 		[   WORD    , "lshift"    ,  INFIX  ,  "<<"          ],
 		[   WORD    , "rshift"    ,  INFIX  ,  ">>"          ],
 		[   OP1     , "="         ,  INFIX  ,  "=="          ],
-		[   OP1     , "!"         ,  PREFIX ,  "!"           ],
-		[   OP1     , "~"         ,  PREFIX ,  "~"           ],
-		[   WORD    , "neg"       ,  PREFIX ,  "-"           ],
 		//  OP1     , "@"  ...
 		//  OP1     , "#"  ...
 		//  OP1     , "$"  ...
@@ -149,6 +147,9 @@ function process_4st_file(path) {
 		[   WORD    , "ge"        ,  INFIX  ,  ">="          ],
 		[   WORD    , "lt"        ,  INFIX  ,  "<"           ],
 		[   WORD    , "le"        ,  INFIX  ,  "<="          ],
+		[   OP1     , "!"         ,  PREFIX ,  "!"           ],
+		[   OP1     , "~"         ,  PREFIX ,  "~"           ],
+		[   WORD    , "neg"       ,  PREFIX ,  "-"           ],
 		[   WORD    , "sqrt"      ,  MATH1  ,  "sqrt"        ],
 		[   WORD    , "sin"       ,  MATH1  ,  "sin"         ],
 		[   WORD    , "cos"       ,  MATH1  ,  "cos"         ],
@@ -254,11 +255,8 @@ function process_4st_file(path) {
 			} else {
 				push_token(USER_WORD, word, lang_call_vm_op);
 			}
-		} else if /*number */ (match(ch, ["09","."])) { // XXX how to do negative numbers? "-420" conflicts with "-" one-char operator
-			// XXX number parser should be better:
-			//  - if "-" doesn't come after "e", consider it to be
-			//    the next token?
-			const number = src.eat_while_match(["09","-",".","e",":"]);
+		} else if /*number */ (match(ch, ["09"])) {
+			const number = src.eat_while_match(["09"]);
 			push_token(PUSH_NUMBER_IMM, number, lang_number_vm_op);
 		} else if /*word definition*/ (ch === ":") {
 			if (defword_state === 0) {
@@ -388,7 +386,7 @@ function process_4st_file(path) {
 					inst.push([opi]);
 					break;
 				case PUSH_NUMBER_IMM:
-					inst.push([opi, parseInt(t[1], 10)]); // XXX
+					inst.push([opi, parseInt(t[1], 10)]);
 					break;
 				case USER_WORD:
 				case PUSH_NUMBER_IMM_INDEX_OF_WORD: {
@@ -423,22 +421,40 @@ function process_4st_file(path) {
 			const expr0 = /\/\*ST4([:{}_])([^*]+)\*\//;
 			const expr1 = /ST4_([A-Za-z0-9_]+)/;
 			let pass_lines = [];
+
+			let max_isa_index = -1;
+			function accept_isa(index, context) {
+				if (index <= max_isa_index) throw new Error("vm4stub.js not specified in \"ISA order\": " + context + " (index="+index+",max_isa_index="+max_isa_index+")");
+				max_isa_index = index;
+			}
+
 			for (const line of vm4stub_lines) {
-				let mo0 = expr0.exec(line);
 				const pass_line = () => pass_lines.push(line);
 				function replace_id(id, vtype, join) {
 					let xs = [];
 					for (let i = 0; i < ISA.length; i++) {
 						if (!(required_vm_other_ops[i] && ISA[i][2] === vtype)) continue;
 						xs.push(ISA[i][3]);
+						accept_isa(i, "at replacing " + id);
 					}
 					if (xs.length === 0) return;
 					pass_lines.push(line.replace(id, JSON.stringify(xs.join(join))));
 				}
 
+				let mo0 = expr0.exec(line);
 				if (mo0) {
 					const typ = mo0[1];
 					const id = mo0[2];
+
+					let do_accept_isa = false;
+					switch (typ) {
+					case ":":
+					case "{":
+						do_accept_isa = true;
+						break;
+					}
+
+
 					let do_include;
 					if (id === "STATIC") {
 						do_include = true;
@@ -449,6 +465,7 @@ function process_4st_file(path) {
 							if (line[2] !== ID) continue;
 							if (line[3] === id && required_vm_ids[id]) {
 								do_include = true;
+								if (do_accept_isa) accept_isa(i, "in id section " + id);
 							}
 						}
 					}
