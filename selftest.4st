@@ -138,6 +138,11 @@
    1 2 3 4   4 ntro     ( abcd -- dabc )  3 = assert  2 = assert  1 = assert  4 = assert
 ;
 
+: test_stack
+   69 dup       69 = assert  69 = assert
+   69 42 over   69 = assert  42 = assert  69 = assert
+;
+
 : test_arrays
    arrnew                        arrlen 0 = assert                                          drop
 

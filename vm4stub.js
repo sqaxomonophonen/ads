@@ -98,8 +98,9 @@
 	/*ST4:CALL_IMM*/push_op(_ => call_word(current_oparg)); // immediate call
 	/*ST4:CALL_POP*/push_op(_ => call_word(stack_pop())); // indirect/popped call
 
-	/*ST4:DUP*/push_op(_ => u(stack[stack.length-1])); // dup (a -- a a)
-	/*ST4:DROP*/push_op(__a => { stack_pop() }); // drop (a --)
+	/*ST4:DUP*/push_op(_ => u(stack_pick(1)));   // dup  (   a -- a a   )
+	/*ST4:OVER*/push_op(_ => u(stack_pick(2)));  // over ( a b -- a b a )
+	/*ST4:DROP*/push_op(__a => { stack_pop() }); // drop (   a --       )
 	const nrot = (n, d, __xs, __i) => {
 		__xs = s(n);
 		for (__i=0; __i<n; __i++) u(__xs[(__i+n+d)%n])
