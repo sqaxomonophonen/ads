@@ -97,7 +97,20 @@
 	/*ST4:DUP*/push_op(__a => { __a = o(); u(__a); u(__a); }); // dup (a -- a a)
 	//push_op(_ => { u(stack[stack.length-1]) }); // dup (a -- a a)
 	/*ST4:POP*/push_op(__a => { o() }); // pop (a --)
-	const nrot = (n, __xs, __i) => { __xs = s(n); for (__i=0; __i<n; __i++) u(__xs[(__i+1)%n]) };
+	const nrot = (n, __xs, __i) => {
+		__xs = s(n);
+		for (__i=0; __i<n; __i++) u(__xs[(__i+1)%n])
+	};
+	/*
+	const nrot = (n, __i, __i0, __tmp, __i1) => {
+		// (PERF) possibly faster inline version of nrot, but more
+		// expensive in size
+		__i0 = stack.length - n;
+		__tmp = stack[__i0];
+		for (__i=1; __i<n; __i++) stack[__i0 + __i - 1] = stack[__i0 + __i]
+		stack[__i0 + n - 1] = __tmp;
+	};
+	*/
 	/*ST4:EXCHANGE*/push_op(_=>nrot(2));
 	/*ST4:TRIROT*/push_op(_=>nrot(3));
 	/*ST4:NROT*/push_op(_=>nrot(o()));
