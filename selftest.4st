@@ -1,8 +1,10 @@
 : test_arithmetic
    2 3 +   5 = assert
+   6 2 -   4 = assert
    2 3 *   6 = assert
    6 2 /   3 = assert
-   6 2 -   4 = assert
+   5 3 %   2 = assert
+   3 4 ^  81 = assert
 ;
 
 
