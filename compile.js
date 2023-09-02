@@ -503,6 +503,11 @@ function process_4st_file(path) {
 		}
 	}
 
+	const ESC   = "\u001b";
+	const NORM  =  ESC+"[0m";
+	const FAIL  =  txt => ESC+"[1;93;41m"+txt+NORM; // bold; fg=bright yellow; bg=red
+	const OK    =  txt => ESC+"[1;92m"+txt+NORM;    // bold; fg=bright green
+
 	const test_prg = trace_program((depth,name) => name.startsWith("test_"));
 	//console.log(test_prg);
 	for (const word_index of test_prg.export_word_indices) {
@@ -510,9 +515,9 @@ function process_4st_file(path) {
 		try {
 			let [n_ops, stack, rstack] = test_prg.vm(test_prg.vm_words, word_index);
 			if (stack.length !== 0 || rstack.length !== 0)  throw new Error("unclean stack after test: " + JSON.stringify([stack,"/R",rstack]));
-			console.log("TEST " + word_name + " OK (" + n_ops + "op)");
+			console.log(OK("TEST " + word_name + " OK (" + n_ops + "op)"));
 		} catch (err) {
-			console.log("TEST ERROR in :" + word_name + " : " + err);
+			console.log(FAIL("TEST ERROR in :" + word_name + " : " + err));
 		}
 	}
 
