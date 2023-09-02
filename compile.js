@@ -191,11 +191,11 @@ function process_4st_file(path) {
 		// graph
 		[   WORD    , "thru"      ,  USRWORD,  "graph_thru"     ], //                  n -- n-input, n-output, pass-thru graph
 		[   WORD    , "curvegen"  ,  USRWORD,  "graph_curvegen" ], //              curve -- curve generator graph
-		[   OP1     , "~"         ,  USRWORD , "graph_compseq"  ], //                A B -- A~B (see FAUST sequential composition)
-		[   OP1     , ","         ,  USRWORD , "graph_comppar"  ], //                A B -- A,B (see FAUST parallel composition)
-		[   WORD    , "swizz"     ,  USRWORD , "graph_swizz"    ], // G i1 i2 ... i(n) n -- n-output graph picking outputs i1 to i(n) from graph G
-		[   OP1     , "@"         ,  USRWORD , "graph_comprec"  ], //              A B n -- A@B with n samples of delay (similar to the FAUST "~" recursion operator)
-		[   WORD    , "boxen"     ,  USRWORD , "graph_boxen"    ], //                  G -- G (encapsulate "unit" for performance reasons)
+		[   OP1     , "~"         ,  USRWORD,  "graph_compseq"  ], //                A B -- A~B (see FAUST sequential composition)
+		[   OP1     , ","         ,  USRWORD,  "graph_comppar"  ], //                A B -- A,B (see FAUST parallel composition)
+		[   WORD    , "swizz"     ,  USRWORD,  "graph_swizz"    ], // G i1 i2 ... i(n) n -- n-output graph picking outputs i1 to i(n) from graph G
+		[   OP1     , "@"         ,  USRWORD,  "graph_comprec"  ], //              A B n -- A@B with n samples of delay (similar to the FAUST "~" recursion operator)
+		[   WORD    , "boxen"     ,  USRWORD,  "graph_boxen"    ], //                  G -- G (encapsulate "unit" for performance reasons)
 
 		// debug symbols should be used only in tests
 

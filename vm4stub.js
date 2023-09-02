@@ -135,13 +135,6 @@
 	/*ST4:arrjoin*/    push_op((__a,__b) => { [__a,__b] = s(2); u([...__a, ...__b]); });
 	/*ST4:arrsplit*/   push_op((__pivot, __xs) => { __pivot = stack_pop(); __xs = stack_pop(); u(__xs.slice(0,__pivot)); u(__xs.slice(__pivot)); });
 
-	/*ST4:thru*/       push_op(_=>0);
-	/*ST4:curvegen*/   push_op(_=>0);
-	/*ST4:compseq*/    push_op(_=>0);
-	/*ST4:comppar*/    push_op(_=>0);
-	/*ST4:swizz*/      push_op(_=>0);
-	/*ST4:boxen*/      push_op(_=>0);
-
 	/*ST4{DEBUG*/
 	push_op(_ => { if (!stack_pop()) throw new Error("ASSERTION FAILED"); }) // assert
 	push_op(_ => { console.log(JSON.stringify(["STACK", stack, "/R", rstack])); }); // dump
