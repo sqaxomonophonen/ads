@@ -97,7 +97,7 @@
 	/*ST4:DUP*/push_op(__a => { __a = o(); u(__a); u(__a); }); // dup (a -- a a)
 	//push_op(_ => { u(stack[stack.length-1]) }); // dup (a -- a a)
 	/*ST4:POP*/push_op(__a => { o() }); // pop (a --)
-	/*ST4:EXCHANGE*/push_op((__a,__b) => { __a = o(); __b = o(); u(__b); u(__a); }); // exchange (a b -- b a)
+	/*ST4:EXCHANGE*/push_op((__a,__b) => { __a = o(); __b = o(); u(__a); u(__b); }); // exchange (a b -- b a)
 	/*ST4:TRIROT*/push_op((__a,__b,__c) => { __a = o(); __b = o(); __c = o(); u(__b); u(__c); u(__a); }); // trirot (a b c -- b c a)
 	/*ST4{DEBUG*/
 	push_op(_ => { if (!o()) throw new Error("ASSERTION FAILED"); })
