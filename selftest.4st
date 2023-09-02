@@ -41,6 +41,24 @@
    69    0 if 2 endif   69 = assert
 ;
 
+: test_times_loop
+   ( XXX should "0 times" be a thing? it would complicate the VM... )
+   2   1 times dup * loop       4 = assert
+   2   2 times dup * loop      16 = assert
+   2   3 times dup * loop     256 = assert
+   2   4 times dup * loop   65536 = assert
+
+   ( nested times/loop )
+   4
+   3 times
+      4 times
+         dup +
+      loop
+      11 -
+   loop
+   13381 = assert
+;
+
 
 : test_word_tables
 

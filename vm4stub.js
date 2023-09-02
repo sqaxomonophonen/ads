@@ -1,4 +1,4 @@
-// npx uglify-js vm4stub.js --exprssion --compress --mangle eval,reserved=['o','u'] -o vm4stub.min.js
+// npx uglify-js vm4stub.js --exprssion --compress --mangle eval,reserved=['s','o','u'] -o vm4stub.min.js
 
 // convention: if a function argument begins with "__" it's not a real
 // argument, but for defining local variables
@@ -15,12 +15,14 @@
 		pc = [entry, 0], // set program counter tuple to "main"
 
 		stack = [],  // main/value stack
-		/*NOMANGL*/o = n=>stack.splice(-(n||1)), // p[o]p
+		/*NOMANGL*/s = n=>stack.splice(-n),      // pop n
+		/*NOMANGL*/o = _=>s(1)[0],               // p[o]p 1
 		/*NOMANGL*/u = v=>stack.push(v),         // p[u]sh
 
 		rstack = [], // return/loop stack
 
 		advance = __tup => [current_opcode, current_oparg] = words[pc[0]][pc[1]++] || [0/*<-implicit return at end of instruction string*/], // get next instruction
+
 		ifskip = (__depth) => {
 			__depth = 0;
 			for (;;) {
@@ -32,10 +34,11 @@
 				//__depth += [,1,,-1][current_opcode]|0; // not shorter after uglify
 			}
 		},
+
 		ops = [],
 		ssplit = s=>s.split(" "),
 		push_op = f=>ops.push(f),
-		push_opn1_expr = (n,expr)=>push_op(eval("_=>{let[a,b]=o("+n+");u("+expr+")}")),
+		push_opn1_expr = (n,expr)=>push_op(eval("_=>{let[a,b]=s("+n+");u("+expr+")}")),
 		call_word = goto_word_index => {
 			rstack.push(pc);
 			pc = [goto_word_index,0];
@@ -53,7 +56,7 @@
 		}
 	});
 	// if/else/endif:
-	push_op(_ => o()[0] ? 0 : ifskip()); // if    : skip until "else" if popped value is false
+	push_op(_ => o() ? 0 : ifskip());    // if    : skip until "else" if popped value is false
 	push_op(_ => ifskip());              // else  : skip until "endif"
 	push_op(_ => 0);                     // endif : no-op; used as marker for ifskip()
 	/*ST4}STATIC*/
@@ -76,10 +79,10 @@
 	/*ST4}TIMES_LOOP*/
 
 	/*ST4{DO_WHILE*/
-	push_op(_ => {
+	push_op(_ => { // do
 		rstack.push(pc[1]);
 	});
-	push_op(_ => {
+	push_op(_ => { // while
 		if (o()) {
 			pc[1] = rstack[rstack.length-1];
 		} else {
@@ -97,7 +100,7 @@
 	/*ST4:EXCHANGE*/push_op((__a,__b) => { __a = o(); __b = o(); u(__b); u(__a); }); // exchange (a b -- b a)
 	/*ST4:TRIROT*/push_op((__a,__b,__c) => { __a = o(); __b = o(); __c = o(); u(__b); u(__c); u(__a); }); // trirot (a b c -- b c a)
 	/*ST4{DEBUG*/
-	push_op(_ => { if (!o()[0]) throw new Error("ASSERTION FAILED"); })
+	push_op(_ => { if (!o()) throw new Error("ASSERTION FAILED"); })
 	push_op(_ => { console.log("STACK", stack); });
 	/*ST4}DEBUG*/
 
