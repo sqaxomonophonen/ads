@@ -129,10 +129,12 @@
 : test_rotations
    1 2         swap     ( ab   -- ba )    1 = assert  2 = assert
    1 2       2 nrot     ( ab   -- ba )    1 = assert  2 = assert
+   1 2       2 ntro     ( ab   -- ba )    1 = assert  2 = assert
    1 2 3       rot      ( abc  -- bca )   1 = assert  3 = assert  2 = assert
    1 2 3     3 nrot     ( abc  -- bca )   1 = assert  3 = assert  2 = assert
    1 2 3 4   4 nrot     ( abcd -- bcda )  1 = assert  4 = assert  3 = assert  2 = assert
    1 2 3       tro      ( abc  -- cab )   2 = assert  1 = assert  3 = assert
+   1 2 3     3 ntro     ( abc  -- cab )   2 = assert  1 = assert  3 = assert
    1 2 3 4   4 ntro     ( abcd -- dabc )  3 = assert  2 = assert  1 = assert  4 = assert
 ;
 
