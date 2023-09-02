@@ -116,6 +116,7 @@ function process_4st_file(path) {
 		[   WORD    , "pop"       ,  ID     ,  "POP"         ],
 		[   WORD    , "exchange"  ,  ID     ,  "EXCHANGE"    ],
 		[   WORD    , "trirot"    ,  ID     ,  "TRIROT"      ],
+		[   WORD    , "nrot"      ,  ID     ,  "NROT"        ],
 		[   WORD    , "assert"    ,  ID     ,  "DEBUG"       ],
 		[   WORD    , "dump"      ,  ID     ,  "DEBUG"       ],
 		[   OP1     , "+"         ,  INFIX  ,  "+"           ],

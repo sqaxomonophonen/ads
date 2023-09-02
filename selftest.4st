@@ -132,5 +132,10 @@
    3  4  gcd    1 = assert
    55 66 gcd   11 = assert
 
+;
 
+: test_rotations
+   1 2         exchange ( ab -- ba )      1 = assert  2 = assert
+   1 2 3       trirot   ( abc -- bca )    1 = assert  3 = assert  2 = assert
+   1 2 3 4   4 nrot     ( abcd -- bcda )  1 = assert  4 = assert  3 = assert  2 = assert
 ;

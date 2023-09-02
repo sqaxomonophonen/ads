@@ -97,8 +97,10 @@
 	/*ST4:DUP*/push_op(__a => { __a = o(); u(__a); u(__a); }); // dup (a -- a a)
 	//push_op(_ => { u(stack[stack.length-1]) }); // dup (a -- a a)
 	/*ST4:POP*/push_op(__a => { o() }); // pop (a --)
-	/*ST4:EXCHANGE*/push_op((__a,__b) => { __a = o(); __b = o(); u(__a); u(__b); }); // exchange (a b -- b a)
-	/*ST4:TRIROT*/push_op((__a,__b,__c) => { __a = o(); __b = o(); __c = o(); u(__b); u(__c); u(__a); }); // trirot (a b c -- b c a)
+	const nrot = (n, __xs, __i) => { __xs = s(n); for (__i=0; __i<n; __i++) u(__xs[(__i+1)%n]) };
+	/*ST4:EXCHANGE*/push_op(_=>nrot(2));
+	/*ST4:TRIROT*/push_op(_=>nrot(3));
+	/*ST4:NROT*/push_op(_=>nrot(o()));
 	/*ST4{DEBUG*/
 	push_op(_ => { if (!o()) throw new Error("ASSERTION FAILED"); })
 	push_op(_ => { console.log("STACK", stack, "/R", rstack); });
