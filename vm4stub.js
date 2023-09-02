@@ -46,6 +46,7 @@
 			rstack.push(pc);
 			pc = [goto_word_index,0];
 		}
+
 		;
 
 	/*ST4{STATIC*/
@@ -140,8 +141,8 @@
 	/*ST4:boxen*/      push_op(_=>0);
 
 	/*ST4{DEBUG*/
-	push_op(_ => { if (!stack_pop()) throw new Error("ASSERTION FAILED"); })
-	push_op(_ => { console.log("STACK", stack, "/R", rstack); });
+	push_op(_ => { if (!stack_pop()) throw new Error("ASSERTION FAILED"); }) // assert
+	push_op(_ => { console.log(JSON.stringify(["STACK", stack, "/R", rstack])); }); // dump
 	/*ST4}DEBUG*/
 
 	let n_ops_executed = 0;

@@ -187,20 +187,18 @@ function process_4st_file(path) {
 		[   WORD    , "arrsplit"  ,  ID     ,  "arrsplit"    ], //  [1,2,3,4] 3 -- [1,2,3] [4]
 
 		// graph
-		[   WORD    , "thru"      ,  ID     ,  "thru"        ], //                  n -- n-input, n-output, pass-thru graph
-		[   WORD    , "curvegen"  ,  ID     ,  "curvegen"    ], //              curve -- curve generator graph
-		[   OP1     , "~"         ,  ID     ,  "compseq"     ], //                A B -- A~B (see FAUST sequential composition)
-		[   OP1     , ","         ,  ID     ,  "comppar"     ], //                A B -- A,B (see FAUST parallel composition)
-		[   WORD    , "swizz"     ,  ID     ,  "swizz"       ], // G i1 i2 ... i(n) n -- n-output graph picking outputs i1 to i(n) from graph G
-		[   OP1     , "@"         ,  ID     ,  "comprec"     ], //              A B n -- A@B with n samples of delay (similar to the FAUST "~" recursion operator)
-		[   WORD    , "boxen"     ,  ID     ,  "boxen"       ], //                  G -- G (encapsulate "unit" for performance reasons)
+		[   WORD    , "thru"      ,  USRWORD,  "graph_thru"     ], //                  n -- n-input, n-output, pass-thru graph
+		[   WORD    , "curvegen"  ,  USRWORD,  "graph_curvegen" ], //              curve -- curve generator graph
+		[   OP1     , "~"         ,  USRWORD , "graph_compseq"  ], //                A B -- A~B (see FAUST sequential composition)
+		[   OP1     , ","         ,  USRWORD , "graph_comppar"  ], //                A B -- A,B (see FAUST parallel composition)
+		[   WORD    , "swizz"     ,  USRWORD , "graph_swizz"    ], // G i1 i2 ... i(n) n -- n-output graph picking outputs i1 to i(n) from graph G
+		[   OP1     , "@"         ,  USRWORD , "graph_comprec"  ], //              A B n -- A@B with n samples of delay (similar to the FAUST "~" recursion operator)
+		[   WORD    , "boxen"     ,  USRWORD , "graph_boxen"    ], //                  G -- G (encapsulate "unit" for performance reasons)
 
 		// debug symbols should be used only in tests
 
 		[   WORD    , "assert"    ,  ID     ,  "DEBUG"       ],
 		[   WORD    , "dump"      ,  ID     ,  "DEBUG"       ],
-
-		[   OP1     , "$"         ,  USRWORD,  "dollar"      ], // user-defined operator?
 	];
 
 	const lang_one_char_to_vm_op_map = {};
@@ -302,8 +300,8 @@ function process_4st_file(path) {
 			src.mark();
 			const word = src.eat_while_match(["az","09","_"]);
 			push_token(PUSH_NUMBER_IMM_INDEX_OF_WORD, word, lang_number_vm_op);
-		} else if /*word*/ (match(ch, ["az","_"])) {
-			const word = src.eat_while_match(["az","09","_"]);
+		} else if /*word*/ (match(ch, ["az","AZ","_"])) {
+			const word = src.eat_while_match(["az","AZ","09","_"]);
 			const builtin_vm_op = lang_builtin_word_to_vm_op_map[word];
 			if (builtin_vm_op) {
 				push_token(BUILTIN_WORD, word, builtin_vm_op);

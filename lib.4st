@@ -7,10 +7,89 @@
    3 3 e10  3000   = assert
 ;
 
-: dollar
-   69
+: EXPR_CONST 0 ;
+: EXPR_INPUT 1 ;
+: EXPR_WORK  2 ;
+: EXPR_DELAY 3 ;
+: EXPR_CURVE 4 ;
+
+: graph_thru   ( n -- n-input, n-output, pass-thru graph )
+   dup arrnew ( -- n n [] ) trirot ( -- n [] n ) arrpush ( -- n [n] )
+
+   arrnew arrpush ( work expressions -- n [n,[]] )
+   arrnew arrpush ( delay tuples     -- n [n,[],[]] )
+
+   arrnew ( -- n [n,[],[]] [] ) trirot ( -- [n,[],[]] [] n ) times
+      arrnew EXPR_INPUT arrpush ( -- [n,[],[]] [..] [EXPR_INPUT] )
+      exchange  ( -- .. [EXPR_INPUT] [..])
+      arrlen    ( -- .. [EXPR_INPUT] [..] len)
+      trirot    ( -- .. [..] len [EXPR_INPUT])
+      exchange  ( -- .. [..] [EXPR_INPUT] len)
+      arrpush   ( -- .. [..] [EXPR_INPUT,len] )
+      arrpush   ( -- .. [.., [EXPR_INPUT,len]] )
+   loop
+   arrpush ( -- [ n, [], [], [[1,0],[1,1],...,[1,n-1]] ] )
 ;
 
-: test_dollar
-   $ 69 = assert
+: test_thru
+   3 thru ( dump ) pop
+   ( TODO? )
+;
+
+: graph_curvegen
+   arrnew    ( -- data [] )
+   0 arrpush ( -- data [0] )
+
+   arrnew arrpush ( work expressions -- data [0,[]] )
+   arrnew arrpush ( delay tuples     -- data [0,[],[]] )
+
+   arrnew EXPR_CURVE arrpush ( -- data [0,[],[]] [EXPR_CURVE] )
+   trirot                    ( -- [0,[],[]] [EXPR_CURVE] data )
+   arrpush                   ( -- [0,[],[]] [EXPR_CURVE,data] )
+   arrpush                   ( -- [0,[],[],[EXPR_CURVE,data]] )
+;
+
+: test_curvegen
+   42 curvegen ( dump ) pop
+   ( TODO? )
+;
+
+: graph_compseq
+  ( TODO )
+;
+
+: test_compseq
+   ~
+;
+
+: graph_comppar
+   ( TODO )
+;
+
+: test_comppar
+   ,
+;
+
+: graph_swizz
+   ( TODO )
+;
+
+: test_swizz
+   swizz
+;
+
+: graph_comprec
+   ( TODO )
+;
+
+: test_comprec
+   @
+;
+
+: graph_boxen
+   ( TODO )
+;
+
+: test_boxen
+   boxen
 ;
