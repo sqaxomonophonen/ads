@@ -131,7 +131,6 @@
    3  4  gcd    1 = assert
    3  4  gcd    1 = assert
    55 66 gcd   11 = assert
-
 ;
 
 : test_rotations
@@ -208,4 +207,11 @@
    2 arrget 7 = assert
    3 arrget 5 = assert
    pop
+;
+
+: test_performance
+   : n 5 4 e10 ;
+   0
+   n times 1 + loop
+   n = assert
 ;
