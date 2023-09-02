@@ -99,7 +99,7 @@
 	/*ST4:CALL_POP*/push_op(_ => call_word(stack_pop())); // indirect/popped call
 
 	/*ST4:DUP*/push_op(_ => u(stack[stack.length-1])); // dup (a -- a a)
-	/*ST4:POP*/push_op(__a => { stack_pop() }); // pop (a --)
+	/*ST4:DROP*/push_op(__a => { stack_pop() }); // drop (a --)
 	const nrot = (n, d, __xs, __i) => {
 		__xs = s(n);
 		for (__i=0; __i<n; __i++) u(__xs[(__i+n+d)%n])
@@ -114,10 +114,10 @@
 		stack[__i0 + n - 1] = __tmp;
 	};
 	*/
-	/*ST4:EXCHANGE*/push_op(_=>nrot(2,1));
-	/*ST4:TRIROT*/push_op(_=>nrot(3,1));
+	/*ST4:SWAP*/push_op(_=>nrot(2,1));
+	/*ST4:ROT*/push_op(_=>nrot(3,1));
 	/*ST4:NROT*/push_op(_=>nrot(stack_pop(),1));
-	/*ST4:TRITRO*/push_op(_=>nrot(3,-1));
+	/*ST4:TRO*/push_op(_=>nrot(3,-1));
 	/*ST4:NTRO*/push_op(_=>nrot(stack_pop(),-1));
 
 	for (op of ssplit(ST4_INFIX))  push_opn1_expr(2, "a"+op+"b");
