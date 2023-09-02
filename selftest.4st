@@ -115,3 +115,22 @@
    `api_four 1 - call   42 = assert
 ;
 
+: test_recursion
+   : gcd ( greatest common divisor done in recursive style, just to test recursion )
+      ( a b )
+      dup 0 = if
+         pop return ( return a )
+      else
+         dup      ( -- a b b)
+         trirot   ( -- b a b)
+         %        ( -- b a%b)
+         gcd
+      endif
+   ;
+   10 15 gcd    5 = assert
+   3  4  gcd    1 = assert
+   3  4  gcd    1 = assert
+   55 66 gcd   11 = assert
+
+
+;
