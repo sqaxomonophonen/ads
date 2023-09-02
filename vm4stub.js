@@ -40,7 +40,8 @@
 
 		ops = [],
 		ssplit = s=>s.split(" "),
-		push_op = f=>ops.push(f),
+		push_op = function() { ops = [...ops, ...arguments]; }
+
 		push_opn1_expr = (n,expr)=>push_op(eval("_=>{let[a,b]=s("+n+");u("+expr+")}")),
 		call_word = goto_word_index => {
 			rstack.push(pc);
@@ -50,49 +51,54 @@
 		;
 
 	/*ST4{STATIC*/
-	push_op(__top=>{ // return
-		for (;;) {
-			__top = rstack.pop();
-			if (typeof __top == "number") continue; // unroll past loop related rstack entries
-			if (typeof __top == "undefined") return 1; // return to void (stop executing)
-			pc = __top; // normal return
-			break;
-		}
-	});
-	// if/else/endif:
-	push_op(_ => stack_pop() ? 0 : ifskip()); // if
-	push_op(_ => ifskip());                   // else
-	push_op(_ => 0);                          // endif : no-op; used as marker for ifskip()
+	push_op(
+		__top=>{ // return
+			for (;;) {
+				__top = rstack.pop();
+				if (typeof __top == "number") continue; // unroll past loop related rstack entries
+				if (typeof __top == "undefined") return 1; // return to void (stop executing)
+				pc = __top; // normal return
+				break;
+			}
+		},
+		// if/else/endif:
+		_ => stack_pop() ? 0 : ifskip(),  // if
+		_ => ifskip(),                    // else
+		_ => 0);                          // endif : no-op; used as marker for ifskip()
 	/*ST4}STATIC*/
 
 	/*ST4:PUSH_IMM*/push_op(_ => u(current_oparg));
 
 	/*ST4{TIMES_LOOP*/
-	push_op(_ => { // times
-		rstack.push(stack_pop());
-		rstack.push(pc[1]);
-	});
-	push_op(_ => { // loop
-		if (--rstack[rstack.length-2]) {
-			pc[1] = rstack[rstack.length-1];
-		} else {
-			rstack.pop();
-			rstack.pop();
+	push_op(
+		_ => { // times
+			rstack.push(stack_pop());
+			rstack.push(pc[1]);
+		},
+		_ => { // loop
+			if (--rstack[rstack.length-2]) {
+				pc[1] = rstack[rstack.length-1];
+			} else {
+				rstack.pop();
+				rstack.pop();
+			}
 		}
-	});
+	);
 	/*ST4}TIMES_LOOP*/
 
 	/*ST4{DO_WHILE*/
-	push_op(_ => { // do
-		rstack.push(pc[1]);
-	});
-	push_op(_ => { // while
-		if (stack_pop()) {
-			pc[1] = rstack[rstack.length-1];
-		} else {
-			rstack.pop();
+	push_op(
+		_ => { // do
+			rstack.push(pc[1]);
+		},
+		_ => { // while
+			if (stack_pop()) {
+				pc[1] = rstack[rstack.length-1];
+			} else {
+				rstack.pop();
+			}
 		}
-	});
+	);
 	/*ST4}DO_WHILE*/
 
 	/*ST4:CALL_IMM*/push_op(_ => call_word(current_oparg)); // immediate call
@@ -134,8 +140,10 @@
 	/*ST4:arrsplit*/   push_op((__pivot, __xs) => { __pivot = stack_pop(); __xs = stack_pop(); u(__xs.slice(0,__pivot)); u(__xs.slice(__pivot)); });
 
 	/*ST4{DEBUG*/
-	push_op(_ => { if (!stack_pop()) throw new Error("ASSERTION FAILED"); }) // assert
-	push_op(_ => { console.log(JSON.stringify(["STACK", stack, "/R", rstack])); }); // dump
+	push_op(
+		_ => { if (!stack_pop()) throw new Error("ASSERTION FAILED"); }, // assert
+		_ => { console.log(JSON.stringify(["STACK", stack, "/R", rstack])); } // dump
+	);
 	/*ST4}DEBUG*/
 
 	let n_ops_executed = 0;
