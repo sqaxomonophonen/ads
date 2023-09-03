@@ -30,6 +30,16 @@ window.onload = () => {
 				select_index(ev.target.selectedIndex);
 			});
 			select_index(0);
+
+			ed.focus();
+
+			ed.addEventListener('keydown', (ev) => {
+				if (ev.which === CC("\t")) {
+					ev.preventDefault();
+				} else if (ev.which === CC("\r")) {
+					console.log("ENTER");
+				}
+			});
 		});
 	});
 
@@ -57,18 +67,6 @@ window.onload = () => {
 			body.addEventListener('mousemove', move);
 			body.addEventListener('mouseup', end);
 			ev.preventDefault();
-		});
-	}
-
-	{ // install code editor
-		ed.focus();
-
-		ed.addEventListener('keydown', (ev) => {
-			if (ev.which === CC("\t")) {
-				ev.preventDefault();
-			} else if (ev.which === CC("\r")) {
-				console.log("ENTER");
-			}
 		});
 	}
 };

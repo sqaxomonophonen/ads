@@ -171,10 +171,13 @@
 	/*ST4:arrjoin*/    push_op((__a,__b) => { [__a,__b] = s(2); u([...__a, ...__b]); });
 	/*ST4:arrsplit*/   push_op((__pivot, __xs) => { __pivot = POP(); __xs = POP(); u(__xs.slice(0,__pivot)); u(__xs.slice(__pivot)); });
 
+	/*ST4:bless*/      push_op(__t => { __t = POP(); TOP().t=__t; });
+	/*ST4:identify*/   push_op(_ => u(TOP().t|0));
+
 	/*ST4{DEBUG*/
 	push_op(
 		_ => { if (!POP()) throw new Error("ASSERTION FAILED"); }, // assert
-		_ => { console.log(JSON.stringify(["STACK", stack, "/R", rstack])); }, // dump
+		_ => { console.log("STACK", stack, "/R", rstack); }, // dump
 		_ => 1, // brk
 	);
 	/*ST4}DEBUG*/

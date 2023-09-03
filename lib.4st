@@ -20,8 +20,10 @@
 : EXPR_DELAY 3 ;
 : EXPR_CURVE 4 ;
 
+: newgraph arrnew 1 bless ;
+
 : graph_thru   ( n -- n-input, n-output, pass-thru graph )
-   dup arrnew ( -- n n [] ) rot ( -- n [] n ) arrpush ( -- n [n] )
+   dup newgraph ( -- n n [] ) rot ( -- n [] n ) arrpush ( -- n [n] )
 
    arrnew arrpush ( work expressions -- n [n,[]] )
    arrnew arrpush ( delay tuples     -- n [n,[],[]] )

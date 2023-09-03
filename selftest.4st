@@ -242,6 +242,13 @@
    arrnew    isnumber not assert      isarr assert   drop
 ;
 
+: test_bless
+   arrnew ( psalm ) 69 bless
+   42 arrpush   arrlen 1 = assert   arrpop 42 = assert
+   identify 69 = assert
+   drop
+;
+
 : test_performance
    : n 5 4 e10 ;
    0

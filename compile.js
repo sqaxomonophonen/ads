@@ -200,6 +200,9 @@ function process_4st_file(path) {
 		[   WORD    , "arrjoin"   ,  ID     ,  "arrjoin"     ], //  [1,2] [3,4] -- [1,2,3,4]
 		[   WORD    , "arrsplit"  ,  ID     ,  "arrsplit"    ], //  [1,2,3,4] 3 -- [1,2,3] [4]
 
+		[   WORD    , "bless"     ,  ID     ,  "bless"       ], //    [1,2,3] 9 -- [1,2,3,t:9]
+		[   WORD    , "identify"  ,  ID     ,  "identify"    ], //  [1,2,3,t:9] -- [1,2,3,t:9] 9
+
 		// graph
 		[   WORD    , "thru"      ,  USRWORD,  "graph_thru"     ], //                  n -- n-input, n-output, pass-thru graph
 		[   WORD    , "curvegen"  ,  USRWORD,  "graph_curvegen" ], //              curve -- curve generator graph
