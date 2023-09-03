@@ -84,7 +84,7 @@ function open(file) {
 		return ch;
 	}
 
-	const get_pos_array = () => [top.filename, top.line, (top.cursor - top.cursor_at_beginning_of_line)];
+	const get_pos_array = () => [top.filename, top.line, (top.cursor - top.cursor_at_beginning_of_line + 1)];
 	const get_pos = () => {
 		const ps = get_pos_array();
 		return "file " + ps[0] + ", line " + ps[1] + ", column " + ps[2];
