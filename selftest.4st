@@ -252,8 +252,21 @@
 : test_brk
    ( the VM can be stoped with brk/breakpoints and can be re-entered, which the
    test-runner does; the program should not see any difference )
+
+   : brk_deep ( n-deep rstack when "brk" fires )
+      dup 0 gt if
+         1 - brk_deep
+      else
+         drop
+         brk
+      endif
+   ;
+
    5 brk 5 = assert
    12 23 brk 23 = assert 12 = assert
+
+   69    5 brk_deep   69 = assert
+
    brk
    1 assert ( try 0 to see that this point is reached by test )
 ;

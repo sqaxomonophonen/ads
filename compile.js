@@ -615,6 +615,8 @@ function process_4st_file(path) {
 				const [ pc0, pc1, stack, rstack, globals, counter ] = vm_state;
 				if (pc0 >= 0) {
 					console.log("breakpoint at " + JSON.stringify(test_prg.dbg_words[pc0][pc1-1]));
+					console.log("STACK", stack);
+					console.log("RSTACK", rstack);
 				}
 				*/
 			}
