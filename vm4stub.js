@@ -15,12 +15,11 @@
 		pc = [entry, 0], // set program counter tuple to "main"
 
 		stack = [],  // main/value stack
-		/*NOMANGL*/s = n=>stack.splice(-n),      // pop n
-		/*NOMANGL*/u = v=>0*stack.push(v),       // p[u]sh
-		stack_pop = _=>s(1)[0],                  // pop 1
-
-		stack_pick = n => stack[stack.length-n-1],
-		stack_top  = _ => stack_pick(0),
+		/*NOMANGL*/s = n=>stack.splice(-n),  // pop n
+		/*NOMANGL*/u = v=>0*stack.push(v),   // p[u]sh
+		POP = _=>s(1)[0],                    // pop 1
+		PICK = n => stack[stack.length-n-1],
+		TOP  = _ => PICK(0),
 
 		rstack = [], // return/loop stack
 
@@ -46,7 +45,9 @@
 		call_word = goto_word_index => {
 			rstack.push(pc);
 			pc = [goto_word_index,0];
-		}
+		},
+
+		globals = []
 
 		;
 
@@ -62,9 +63,9 @@
 			}
 		},
 		// if/else/endif:
-		_ => stack_pop() ? 0 : ifskip(),  // if
-		_ => ifskip(),                    // else
-		_ => 0);                          // endif : no-op; used as marker for ifskip()
+		_ => POP() ? 0 : ifskip(),  // if
+		_ => ifskip(),              // else
+		_ => 0);                    // endif : no-op; used as marker for ifskip()
 	/*ST4}STATIC*/
 
 	/*ST4:PUSH_IMM*/push_op(_ => u(current_oparg));
@@ -72,7 +73,7 @@
 	/*ST4{TIMES_LOOP*/
 	push_op(
 		_ => { // times
-			rstack.push(stack_pop());
+			rstack.push(POP());
 			rstack.push(pc[1]);
 		},
 		_ => { // loop
@@ -92,7 +93,7 @@
 			rstack.push(pc[1]);
 		},
 		_ => { // while
-			if (stack_pop()) {
+			if (POP()) {
 				pc[1] = rstack[rstack.length-1];
 			} else {
 				rstack.pop();
@@ -102,12 +103,12 @@
 	/*ST4}DO_WHILE*/
 
 	/*ST4:CALL_IMM*/push_op(_ => call_word(current_oparg)); // immediate call
-	/*ST4:CALL_POP*/push_op(_ => call_word(stack_pop())); // indirect/popped call
+	/*ST4:CALL_POP*/push_op(_ => call_word(POP())); // indirect/popped call
 
-	/*ST4:PICK*/push_op(_=> u(stack_pick(stack_pop())));
-	/*ST4:DROP*/push_op(__a => { stack_pop() }); // drop (   a --       )
+	/*ST4:PICK*/push_op(_=> u(PICK(POP())));
+	/*ST4:DROP*/push_op(__a => { POP() }); // drop (   a --       )
 	const rotate = (direction, __n, __xs, __i) => {
-		__n = stack_pop();
+		__n = POP();
 		__xs = s(__n);
 		for (__i=0; __i<__n; __i++) u(__xs[(__i+__n+direction)%__n])
 	};
@@ -128,20 +129,26 @@
 	for (op of ST4_PREFIX)         push_opn1_expr(1, op+"a");
 	for (op of ssplit(ST4_MATH1))  push_opn1_expr(1, "Math."+op+"(a)");
 
+	/*ST4:getglobal*/push_op(_=>u(globals[POP()]));
+	/*ST4:setglobal*/push_op((__value,__index) => { [__index,__value] = s(2); globals[__index] = __value; });
+
+	/*ST4:isnumber*/push_op(_=>u(!TOP().pop));
+	/*ST4:isarr*/push_op(_=>u(!!TOP().pop));
+
 	/*ST4:arrnew*/     push_op(_ => u([]));
-	/*ST4:arrlen*/     push_op(_ => u(stack_top().length));
-	/*ST4:arrpush*/    push_op(_ => 0*stack_pick(1).push(stack_pop()));
-	/*ST4:arrpop*/     push_op(_ => u(stack_top().pop()));
-	/*ST4:arrunshift*/ push_op(_ => 0*stack_pick(1).unshift(stack_pop()));
-	/*ST4:arrshift*/   push_op(_ => u(stack_top().shift()));
-	/*ST4:arrget*/     push_op(_ => u(stack_pick(1)[stack_pop()]));
-	/*ST4:arrset*/     push_op((__k,__v) => { [__k,__v] = s(2); stack_top()[__k] = __v; });
+	/*ST4:arrlen*/     push_op(_ => u(TOP().length));
+	/*ST4:arrpush*/    push_op(_ => 0*PICK(1).push(POP()));
+	/*ST4:arrpop*/     push_op(_ => u(TOP().pop()));
+	/*ST4:arrunshift*/ push_op(_ => 0*PICK(1).unshift(POP()));
+	/*ST4:arrshift*/   push_op(_ => u(TOP().shift()));
+	/*ST4:arrget*/     push_op(_ => u(PICK(1)[POP()]));
+	/*ST4:arrset*/     push_op((__k,__v) => { [__k,__v] = s(2); TOP()[__k] = __v; });
 	/*ST4:arrjoin*/    push_op((__a,__b) => { [__a,__b] = s(2); u([...__a, ...__b]); });
-	/*ST4:arrsplit*/   push_op((__pivot, __xs) => { __pivot = stack_pop(); __xs = stack_pop(); u(__xs.slice(0,__pivot)); u(__xs.slice(__pivot)); });
+	/*ST4:arrsplit*/   push_op((__pivot, __xs) => { __pivot = POP(); __xs = POP(); u(__xs.slice(0,__pivot)); u(__xs.slice(__pivot)); });
 
 	/*ST4{DEBUG*/
 	push_op(
-		_ => { if (!stack_pop()) throw new Error("ASSERTION FAILED"); }, // assert
+		_ => { if (!POP()) throw new Error("ASSERTION FAILED"); }, // assert
 		_ => { console.log(JSON.stringify(["STACK", stack, "/R", rstack])); } // dump
 	);
 	/*ST4}DEBUG*/

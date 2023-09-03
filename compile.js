@@ -175,6 +175,12 @@ function process_4st_file(path) {
 		[   WORD    , "sign"      ,  MATH1  ,  "sign"        ],
 		[   WORD    , "abs"       ,  MATH1  ,  "abs"         ],
 
+		[   WORD    , "getglobal" ,  ID     ,  "getglobal"   ], //        index -- globals[index]
+		[   WORD    , "setglobal" ,  ID     ,  "setglobal"   ], //  index value --                 ( sets globals[index]=value )
+
+		[   WORD    , "isnumber"  ,  ID     ,  "isnumber"    ], // x -- x isnumber(x) 1 if number, otherwise 0
+		[   WORD    , "isarr"     ,  ID     ,  "isarr"       ], // x -- x isarr(x)    1 if array,  otherwise 0
+
 		// arrays
 		[   WORD    , "arrnew"    ,  ID     ,  "arrnew"      ], //              -- []
 		[   WORD    , "arrlen"    ,  ID     ,  "arrlen"      ], //      [69,42] -- [69,42] 2

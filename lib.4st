@@ -27,16 +27,17 @@
    arrnew arrpush ( delay tuples     -- n [n,[],[]] )
 
    ( output expressions: )
-   arrnew ( -- n [n,[],[]] [] ) rot ( -- [n,[],[]] [] n ) times
+   arrnew ( -- n [n,[],[]] [] )
+   rot    ( -- [n,[],[]] [] n )
+   times
       arrnew EXPR_INPUT arrpush ( -- [n,[],[]] [..] [EXPR_INPUT] )
       swap      ( -- .. [EXPR_INPUT] [..])
       arrlen    ( -- .. [EXPR_INPUT] [..] len)
-      rot       ( -- .. [..] len [EXPR_INPUT])
-      swap      ( -- .. [..] [EXPR_INPUT] len)
+      rot swap  ( -- .. [..] [EXPR_INPUT] len)
       arrpush   ( -- .. [..] [EXPR_INPUT,len] )
       arrpush   ( -- .. [.., [EXPR_INPUT,len]] )
    loop
-   arrpush ( -- [ n, [], [], [[EXPR_INPUT,0],...,[EXPR_INPUT,n-1]] ] )
+   arrpush      ( -- [ n, [], [], [[EXPR_INPUT,0],...,[EXPR_INPUT,n-1]] ] )
 ;
 
 : test_thru
