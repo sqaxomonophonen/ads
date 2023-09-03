@@ -1,0 +1,101 @@
+<!doctype html>
+<html>
+<head>
+<style>
+
+body {
+	background: black;
+	color: white;
+	margin: 0;
+	padding: 0;
+}
+
+#ed_root {
+	display: flex;
+	width: 100%;
+	flex-direction: column;
+}
+
+#ed_header {
+	flex: 0 0 auto;
+	background: #004;
+}
+
+#ed {
+	flex: 1 1 auto;
+	font-family: monospace;
+	font-size: 18px;
+	outline: none;
+	padding-left: 1.5em;
+	margin: 0;
+	overflow: auto;
+	overflow-y: scroll;
+}
+
+#ed .code_line {
+	position: relative;
+	white-space: pre-wrap;
+}
+
+#pane_root {
+	display: flex;
+	width: 100%;
+	margin: 0;
+	padding: 0;
+	height: 100vh;
+}
+
+#pane_left {
+	display: flex;
+	width: 100%;
+	flex-grow: 1;
+	flex-shrink: 0;
+	flex-basis: 50%; /* initial? XXX can I set/remember this? */
+	overflow-y: scroll;
+}
+
+#pane_resize {
+	display: flex;
+	flex-grow: 0;
+	flex-shrink: 0;
+	background: #002;
+	border-left: 1px dotted white;
+	border-right: 1px dotted white;
+	width: 0.3rem;
+	cursor: col-resize;
+	margin: 0 0 0 auto;
+}
+
+#pane_right {
+	display: flex;
+	width: 100%;
+	flex-grow: 0;
+	flex-shrink: 1;
+	overflow-x: auto;
+}
+
+</style>
+<script src="static/index.js"></script>
+</head>
+<body>
+
+<div id="pane_root">
+	<div id="pane_left">
+		<div id="ed_root">
+			<div id="ed_header">
+				<select id="ed_select_file"></select>
+				<button id="ed_new">new</button>
+				<button id="ed_del">&times;</button>
+			</div>
+			<div id="ed" contenteditable="true" spellcheck="false">
+			</div>
+		</div>
+	</div>
+	<div id="pane_resize">&nbsp;</div>
+	<div id="pane_right">
+	...
+	</div>
+</div>
+
+</body>
+</html>
