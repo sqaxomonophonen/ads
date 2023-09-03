@@ -238,6 +238,9 @@ function process_4st_file(path) {
 
 	const src = open(path);
 
+	const is_test_word = word => word.startsWith("test_");
+	const is_main_word = word => word.startsWith("main_");
+
 	let defword_state = 0;
 	let defword_table_serial = 1;
 	let word_sort_key_major = 0, word_sort_key_minor = 0;
@@ -262,6 +265,7 @@ function process_4st_file(path) {
 			defword_state = 0;
 		} else {
 			if (word_stack.length < 2) src.error("only word definitions (\":<word>\") are allowed at the top level");
+			if (typ === USER_WORD && is_test_word(value)) src.error("'test_'-prefixed words are reserved for unit tests; they should not be called directly");
 			if (vm_op[1] === USRWORD) {
 				word.tokens.push([USER_WORD, vm_op[2], lang_call_vm_op]);
 			} else {
@@ -575,7 +579,7 @@ function process_4st_file(path) {
 	const FAIL  =  txt => ESC+"[1;93;41m"+txt+NORM; // bold; fg=bright yellow; bg=red
 	const OK    =  txt => ESC+"[1;92m"+txt+NORM;    // bold; fg=bright green
 
-	const test_prg = trace_program((depth,name) => name.startsWith("test_"));
+	const test_prg = trace_program((depth,name) => is_test_word(name));
 	//console.log(test_prg);
 	for (const word_index of test_prg.export_word_indices) {
 		const word_name = test_prg.export_word_names[word_index];
@@ -588,7 +592,7 @@ function process_4st_file(path) {
 		}
 	}
 
-	//const main_prg = trace_program((depth,name) => depth === 0 && name.startsWith("main_"));
+	//const main_prg = trace_program((depth,name) => depth === 0 && is_main_word(name));
 	//console.log(main_prg);
 }
 
