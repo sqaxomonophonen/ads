@@ -51,8 +51,7 @@ const RESOLVE_FILE = (filename) => fs.readFileSync(path.join(__dirname, filename
 
 function open(file) {
 	let file_stack = [];
-	let cursor_mark;
-
+	let cursor_mark, mark_pos;
 	let top;
 
 	function set_top() { top = file_stack[file_stack.length-1]; };
@@ -85,11 +84,19 @@ function open(file) {
 		return ch;
 	}
 
-	const get_pos = () => "file " + top.filename + ", line " + top.line + ", column " + (top.cursor - top.cursor_at_beginning_of_line);
+	const get_pos_array = () => [top.filename, top.line, (top.cursor - top.cursor_at_beginning_of_line)];
+	const get_pos = () => {
+		const ps = get_pos_array();
+		return "file " + ps[0] + ", line " + ps[1] + ", column " + ps[2];
+	};
 	function warn(msg) { console.warn("WARNING at " + get_pos() + ": " + msg); };
 	function error(msg) { throw new Error("at " + get_pos() + ": " + msg); };
 	const get_lines = () => top.src.split("\n")
-	function mark() { cursor_mark = top.cursor; }
+	function mark() {
+		cursor_mark = top.cursor;
+		mark_pos = get_pos_array();
+	}
+	const get_mark_pos = _ => mark_pos;
 
 	function eat_while_match(pattern) {
 		for (;;) {
@@ -110,7 +117,7 @@ function open(file) {
 		while (!one_of(get(), chars)) {};
 	}
 
-	return { push_file, pop_file, get, get_lines, mark, eat_while_match, skip_whitespace, skip_until_match_one_of, error, warn };
+	return { get_mark_pos, push_file, pop_file, get, get_lines, mark, eat_while_match, skip_whitespace, skip_until_match_one_of, error, warn };
 }
 
 function process_4st_file(path) {
@@ -234,7 +241,7 @@ function process_4st_file(path) {
 	if (!lang_number_vm_op) throw new Error("SANITY CHECK FAIL: no 'number' VM op");
 	if (!lang_call_vm_op)   throw new Error("SANITY CHECK FAIL: no 'call' VM op");
 
-	const new_word = () => ({ tokens: [] });
+	const new_word = () => ({ tokens: [], dbgpos: [] });
 
 	let word = new_word();
 	const root_word = word;
@@ -254,16 +261,19 @@ function process_4st_file(path) {
 		if (defword_state > 0) {
 			if (typ !== USER_WORD) src.error("expected USER_WORD");
 			word.name = value;
-			word.sort_key = [word_sort_key_major, word_sort_key_minor];
 			if (defword_state === 1) {
 				word_sort_key_major++;
 				word_sort_key_minor = 0;
 			} else if (defword_state === 2) {
 				word.is_word_table_entry = true;
+				if (word_sort_key_minor === 0) {
+					word_sort_key_major++;
+				}
 				word_sort_key_minor++;
 			} else {
 				throw new Error("unexpected defword state " + defword_state);
 			}
+			word.sort_key = [word_sort_key_major, word_sort_key_minor];
 			const word_scope = word_stack[word_stack.length-2];
 			if (word_scope.words === undefined) word_scope.words = [];
 			word_scope.words.push(word);
@@ -276,6 +286,7 @@ function process_4st_file(path) {
 			} else {
 				word.tokens.push([typ, value, vm_op]);
 			}
+			word.dbgpos.push(src.get_mark_pos());
 		}
 	}
 
@@ -477,6 +488,8 @@ function process_4st_file(path) {
 			export_word_indices.push(i);
 			export_word_names[i] = w.name;
 		}
+
+		//console.log(JSON.stringify(prg_words));
 
 		let vm, vm_src;
 		{
