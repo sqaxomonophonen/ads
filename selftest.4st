@@ -250,6 +250,10 @@
 ;
 
 : test_brk
-   brk ( TODO  can currently be detected by the vm returning pc0>=0; other tests ought to exit with -1 )
-   0 assert ( unreachable )
+   ( the VM can be stoped with brk/breakpoints and can be re-entered, which the
+   test-runner does; the program should not see any difference )
+   5 brk 5 = assert
+   12 23 brk 23 = assert 12 = assert
+   brk
+   1 assert ( try 0 to see that this point is reached by test )
 ;

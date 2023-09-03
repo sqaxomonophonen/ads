@@ -609,14 +609,19 @@ function process_4st_file(path) {
 				[], [], [],
 				MAX_INSTRUCTIONS
 			];
-			let [ pc0, pc1, stack, rstack, globals, counter ] = test_prg.vm(test_prg.vm_words, vm_state);
+			while (vm_state[0] >= 0) {
+				vm_state = test_prg.vm(test_prg.vm_words, vm_state);
+				/*
+				const [ pc0, pc1, stack, rstack, globals, counter ] = vm_state;
+				if (pc0 >= 0) {
+					console.log("breakpoint at " + JSON.stringify(test_prg.dbg_words[pc0][pc1-1]));
+				}
+				*/
+			}
+
+			const [ pc0, pc1, stack, rstack, globals, counter ] = vm_state;
 			//console.log([pc0,pc1]);
 			//console.log(globals);
-			/*
-			if (pc0 >= 0) {
-				console.log("breakpoint at " + JSON.stringify(test_prg.dbg_words[pc0][pc1-1]));
-			}
-			*/
 			const n_ops = MAX_INSTRUCTIONS - counter;
 			if (stack.length !== 0 || rstack.length !== 0)  throw new Error("unclean stack after test: " + JSON.stringify([stack,"/R",rstack]));
 			console.log(OK("TEST " + word_name + " OK (" + n_ops + "op)"));
