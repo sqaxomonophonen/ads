@@ -204,8 +204,9 @@ function process_4st_file(path) {
 
 		// debug symbols should be used only in tests
 
-		[   WORD    , "assert"    ,  ID     ,  "DEBUG"       ],
-		[   WORD    , "dump"      ,  ID     ,  "DEBUG"       ],
+		[   WORD    , "assert"    ,  ID     ,  "DEBUG"       ], // pop value; crash if zero
+		[   WORD    , "dump"      ,  ID     ,  "DEBUG"       ], // dump stack/rstack contents
+		[   WORD    , "brk"       ,  ID     ,  "DEBUG"       ], // breakpoint
 	];
 
 	const lang_one_char_to_vm_op_map = {};
@@ -590,7 +591,16 @@ function process_4st_file(path) {
 	for (const word_index of test_prg.export_word_indices) {
 		const word_name = test_prg.export_word_names[word_index];
 		try {
-			let [n_ops, stack, rstack] = test_prg.vm(test_prg.vm_words, word_index);
+			const MAX_INSTRUCTIONS = 1e8;
+			let vm_state = [
+				word_index, 0,
+				[], [], [],
+				MAX_INSTRUCTIONS
+			];
+			let [ pc0, pc1, stack, rstack, globals, counter ] = test_prg.vm(test_prg.vm_words, vm_state);
+			//console.log([pc0,pc1]);
+			//console.log(globals);
+			const n_ops = MAX_INSTRUCTIONS - counter;
 			if (stack.length !== 0 || rstack.length !== 0)  throw new Error("unclean stack after test: " + JSON.stringify([stack,"/R",rstack]));
 			console.log(OK("TEST " + word_name + " OK (" + n_ops + "op)"));
 		} catch (err) {

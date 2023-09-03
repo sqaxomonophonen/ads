@@ -1,5 +1,18 @@
 // npx uglify-js vm4stub.js --expression --compress --mangle eval,reserved=['s','u'] -o vm4stub.min.js
 
+// "state" should be initialized like this:
+// [
+//    <entry point word index>, // PC0: current word index executing
+//    0,                        // PC1: current op index executing
+//    [],                       // stack  (main stack)
+//    [],                       // rstack (return/loop stack)
+//    [],                       // globals (accessed with getglobal/setglobal)
+//    1e7                       // maximum number of instructions (MUST be >0)
+// ]
+// or [entrypoint,0,[],[],[],1e7] for short
+// function returns state in same format. the instruction count will tell you
+// how many instructions were executed.
+
 // convention: if a function argument begins with "__" it's not a real
 // argument, but for defining local variables
 
@@ -7,23 +20,32 @@
 // eval()s, meaning they should not be mangled. also add the name to the
 // reserved=[] list above.
 
-(words, entry) => {
+// convention: tag code that should be different/removed when doing size
+// optimized release builds with "XXX(size)" and maybe a comment about it.
+
+(words, state) => {
 	let
+		[
+			// see state explanation above
+			pc0, pc1,
+			stack,
+			rstack,
+			globals,
+			max_instructions // XXX(size) this is only required for "live coding safety" and step debugging
+		] = state,
+
 		current_opcode,
 		current_oparg,
 
-		pc = [entry, 0], // set program counter tuple to "main"
-
-		stack = [],  // main/value stack
 		/*NOMANGL*/s = n=>stack.splice(-n),  // pop n
 		/*NOMANGL*/u = v=>0*stack.push(v),   // p[u]sh
 		POP = _=>s(1)[0],                    // pop 1
 		PICK = n => stack[stack.length-n-1],
 		TOP  = _ => PICK(0),
 
-		rstack = [], // return/loop stack
-
-		advance = __tup => [current_opcode, current_oparg] = words[pc[0]][pc[1]++] || [0/*<-implicit return at end of instruction string*/], // get next instruction
+		advance = __tup => [current_opcode, current_oparg] = words[pc0][pc1++] || [0], // get next instruction
+		// NOTE: "|| [0]" injects implicit return ops past end of
+		// instruction list (because ISA[0] is an explicit return op)
 
 		ifskip = (__depth) => {
 			__depth = 0;
@@ -43,11 +65,10 @@
 
 		push_opn1_expr = (n,expr)=>push_op(eval("_=>{let[a,b]=s("+n+");u("+expr+")}")),
 		call_word = goto_word_index => {
-			rstack.push(pc);
-			pc = [goto_word_index,0];
-		},
-
-		globals = []
+			rstack.push([pc0,pc1]);
+			pc0 = goto_word_index;
+			pc1 = 0;
+		}
 
 		;
 
@@ -57,9 +78,13 @@
 			for (;;) {
 				__top = rstack.pop();
 				if (typeof __top == "number") continue; // unroll past loop related rstack entries
-				if (typeof __top == "undefined") return 1; // return to void (stop executing)
-				pc = __top; // normal return
-				break;
+				if (typeof __top == "undefined") {
+					pc0 = -1; // XXX(size) this is only required for step debugging (if pc0>=0 it's a "brk")
+					return 1; // return to void (stop executing)
+				} else {
+					[pc0, pc1] = __top; // normal return
+					break;
+				}
 			}
 		},
 		// if/else/endif:
@@ -74,11 +99,11 @@
 	push_op(
 		_ => { // times
 			rstack.push(POP());
-			rstack.push(pc[1]);
+			rstack.push(pc1);
 		},
 		_ => { // loop
 			if (--rstack[rstack.length-2]) {
-				pc[1] = rstack[rstack.length-1];
+				pc1 = rstack[rstack.length-1];
 			} else {
 				rstack.pop();
 				rstack.pop();
@@ -90,11 +115,11 @@
 	/*ST4{DO_WHILE*/
 	push_op(
 		_ => { // do
-			rstack.push(pc[1]);
+			rstack.push(pc1);
 		},
 		_ => { // while
 			if (POP()) {
-				pc[1] = rstack[rstack.length-1];
+				pc1 = rstack[rstack.length-1];
 			} else {
 				rstack.pop();
 			}
@@ -149,12 +174,11 @@
 	/*ST4{DEBUG*/
 	push_op(
 		_ => { if (!POP()) throw new Error("ASSERTION FAILED"); }, // assert
-		_ => { console.log(JSON.stringify(["STACK", stack, "/R", rstack])); } // dump
+		_ => { console.log(JSON.stringify(["STACK", stack, "/R", rstack])); }, // dump
+		_ => 1, // brk
 	);
 	/*ST4}DEBUG*/
 
-	let n_ops_executed = 0;
-	for (;advance(),!ops[current_opcode](); n_ops_executed++); // execution loop
-
-	return [n_ops_executed, stack, rstack]; // XXX don't bother in "production"
+	for (;advance(),(max_instructions--) && !ops[current_opcode]();) {} // XXX(size) skip max_instructions stuff in release
+	return [pc0,pc1,stack,rstack,globals,max_instructions]; // XXX(size) probably only return stack or stack[0] in release
 }

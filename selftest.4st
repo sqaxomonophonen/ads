@@ -248,3 +248,8 @@
    n times 1 + loop
    n = assert
 ;
+
+: test_brk
+   brk ( TODO  can currently be detected by the vm returning pc0>=0; other tests ought to exit with -1 )
+   0 assert ( unreachable )
+;
