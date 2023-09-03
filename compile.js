@@ -447,6 +447,7 @@ function process_4st_file(path) {
 		}
 
 		const vm_words = [];
+		const dbg_words = [];
 		for (const w of prg_words) {
 			let inst = [];
 			for (const t of w.tokens) {
@@ -478,6 +479,7 @@ function process_4st_file(path) {
 				}
 			}
 			vm_words.push(inst);
+			dbg_words.push(w.dbgpos);
 		}
 
 		const export_word_indices = [];
@@ -488,8 +490,6 @@ function process_4st_file(path) {
 			export_word_indices.push(i);
 			export_word_names[i] = w.name;
 		}
-
-		//console.log(JSON.stringify(prg_words));
 
 		let vm, vm_src;
 		{
@@ -586,6 +586,7 @@ function process_4st_file(path) {
 		return {
 			vm,
 			vm_words,
+			dbg_words,
 			export_word_indices,
 			export_word_names,
 			vm_src,
@@ -598,7 +599,7 @@ function process_4st_file(path) {
 	const OK    =  txt => ESC+"[1;92m"+txt+NORM;    // bold; fg=bright green
 
 	const test_prg = trace_program((depth,name) => is_test_word(name));
-	//console.log(test_prg);
+	//console.log(JSON.stringify(test_prg));
 	for (const word_index of test_prg.export_word_indices) {
 		const word_name = test_prg.export_word_names[word_index];
 		try {
@@ -611,6 +612,11 @@ function process_4st_file(path) {
 			let [ pc0, pc1, stack, rstack, globals, counter ] = test_prg.vm(test_prg.vm_words, vm_state);
 			//console.log([pc0,pc1]);
 			//console.log(globals);
+			/*
+			if (pc0 >= 0) {
+				console.log("breakpoint at " + JSON.stringify(test_prg.dbg_words[pc0][pc1-1]));
+			}
+			*/
 			const n_ops = MAX_INSTRUCTIONS - counter;
 			if (stack.length !== 0 || rstack.length !== 0)  throw new Error("unclean stack after test: " + JSON.stringify([stack,"/R",rstack]));
 			console.log(OK("TEST " + word_name + " OK (" + n_ops + "op)"));
