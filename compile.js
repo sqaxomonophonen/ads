@@ -249,7 +249,6 @@ function process_4st_file(path) {
 	const is_main_word = word => word.startsWith("main_");
 
 	let defword_state = 0;
-	let defword_table_serial = 1;
 	let word_sort_key_major = 0, word_sort_key_minor = 0;
 	function push_token(typ, value, vm_op) {
 		if (defword_state > 0) {
@@ -261,7 +260,6 @@ function process_4st_file(path) {
 				word_sort_key_minor = 0;
 			} else if (defword_state === 2) {
 				word.is_word_table_entry = true;
-				word.table_serial = defword_table_serial++;
 				word_sort_key_minor++;
 			} else {
 				throw new Error("unexpected defword state " + defword_state);
