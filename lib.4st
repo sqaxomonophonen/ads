@@ -20,44 +20,52 @@
 : EXPR_DELAY 3 ;
 : EXPR_CURVE 4 ;
 
-: newgraph arrnew 1 bless ;
+: newgraph
+   arrnew 1 bless
+   0 arrpush      ( number of inputs )
+   arrnew arrpush ( work expressions )
+   arrnew arrpush ( delay tuples )
+   arrnew arrpush ( output expressions )
+;
+
+: graph_set_n_inputs ( G n -- G )
+   0 swap ( -- G 0 n ) arrset ( -- G )
+;
+
+: graph_get_output_expressions ( G -- G outputexpr )
+   3 arrget
+;
 
 : graph_thru   ( n -- n-input, n-output, pass-thru graph )
-   dup newgraph ( -- n n [] ) rot ( -- n [] n ) arrpush ( -- n [n] )
+   dup
+   newgraph ( -- n n G )
+   swap graph_set_n_inputs ( -- n G )
 
-   arrnew arrpush ( work expressions -- n [n,[]] )
-   arrnew arrpush ( delay tuples     -- n [n,[],[]] )
-
-   ( output expressions: )
-   arrnew ( -- n [n,[],[]] [] )
-   rot    ( -- [n,[],[]] [] n )
-   times
-      arrnew EXPR_INPUT arrpush ( -- [n,[],[]] [..] [EXPR_INPUT] )
+   graph_get_output_expressions ( -- n G [..] )
+   rot    ( -- G [..] n )
+   times ( -- G [..] )
+      arrnew EXPR_INPUT arrpush ( -- .. [..] [EXPR_INPUT] )
       swap      ( -- .. [EXPR_INPUT] [..])
       arrlen    ( -- .. [EXPR_INPUT] [..] len)
       rot swap  ( -- .. [..] [EXPR_INPUT] len)
       arrpush   ( -- .. [..] [EXPR_INPUT,len] )
       arrpush   ( -- .. [.., [EXPR_INPUT,len]] )
    loop
-   arrpush      ( -- [ n, [], [], [[EXPR_INPUT,0],...,[EXPR_INPUT,n-1]] ] )
+   drop
 ;
 
 : test_thru
-   3 thru ( dump ) drop
+   3 thru  ( dump )  drop
    ( TODO? )
 ;
 
 : graph_curvegen
-   ( -- data [] )
-   arrnew 0 arrpush ( -- data [0] )
-   arrnew arrpush ( work expressions -- data [0,[]] )
-   arrnew arrpush ( delay tuples     -- data [0,[],[]] )
-
-   ( output expressions: )
-   arrnew EXPR_CURVE arrpush ( -- data [0,[],[]] [EXPR_CURVE] )
-   rot arrpush               ( -- [0,[],[]] [EXPR_CURVE,data] )
-   arrnew swap arrpush       ( -- [0,[],[]] [[EXPR_CURVE,data]] )
-   arrpush                   ( -- [0,[],[],[[EXPR_CURVE,data]]] )
+   newgraph                        ( -- data G )
+   arrnew EXPR_CURVE arrpush ( -- data G [EXPR_CURVE] )
+   rot arrpush               ( -- G [EXPR_CURVE,data] )
+   swap graph_get_output_expressions ( -- [EXPR_CURVE,data] G []  )
+   rot arrpush                       ( -- G [[EXPR_CURVE,data]]  )
+   drop
 ;
 
 : test_curvegen

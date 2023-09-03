@@ -177,7 +177,7 @@
 	/*ST4{DEBUG*/
 	push_op(
 		_ => { if (!POP()) throw new Error("ASSERTION FAILED"); }, // assert
-		_ => { console.log("STACK", stack, "/R", rstack); }, // dump
+		_ => { console.log("STACK", stack, JSON.stringify(stack), "/R", rstack); }, // dump
 		_ => 1, // brk
 	);
 	/*ST4}DEBUG*/
