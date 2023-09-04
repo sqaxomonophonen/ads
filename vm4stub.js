@@ -7,11 +7,14 @@
 //    [],                       // stack  (main stack)
 //    [],                       // rstack (return/loop stack)
 //    [],                       // globals (accessed with getglobal/setglobal)
-//    1e7,                      // maximum number of instructions (MUST be >0)
+//    1e7,                      // max op count; MUST be >0
 //    new WeakSet(),            // graph tag set (arrays tagged with dtgraph)
 // ]
-// function returns state in same format. the instruction count will tell you
-// how many instructions were executed.
+// the function returns state in same format (so the VM can be re-entered after
+// execution breaks). the "max op count" (index 5) is decremented for each op
+// executed, and the VM will exit when it reaches zero, so remember to reset it
+// to a positive value if you intend to continue execution (e.g. to prevent
+// infinite loops or memory bomb kind of things)
 
 // convention: if a function argument begins with "__" it's not a real
 // argument, but for defining local variables
@@ -32,7 +35,7 @@
 			rstack,
 			globals,
 			max_instructions, // XXX(size) this is only required for "live coding safety" and step debugging
-			graph_tag_set,
+			graph_tag_set,    // XXX(size) a debug thing
 		] = state,
 
 		current_opcode,
@@ -184,6 +187,6 @@
 	);
 	/*ST4}DEBUG*/
 
-	for (;advance(),(max_instructions--) && !ops[current_opcode]();) {} // XXX(size) skip max_instructions stuff in release
-	return [pc0,pc1,stack,rstack,globals,max_instructions]; // XXX(size) probably only return stack or stack[0] in release
+	for (;advance(),(max_instructions--) && !ops[current_opcode]();) {}   // XXX(size) skip max_instructions stuff in release
+	return [pc0,pc1,stack,rstack,globals,max_instructions,graph_tag_set]; // XXX(size) probably only return stack or stack[0] in release
 }
