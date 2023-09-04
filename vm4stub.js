@@ -10,7 +10,6 @@
 //    1e7,                      // maximum number of instructions (MUST be >0)
 //    new WeakSet(),            // graph tag set (arrays tagged with dtgraph)
 // ]
-// or [entrypoint,0,[],[],[],1e7] for short
 // function returns state in same format. the instruction count will tell you
 // how many instructions were executed.
 
