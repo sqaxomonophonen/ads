@@ -7,7 +7,8 @@
 //    [],                       // stack  (main stack)
 //    [],                       // rstack (return/loop stack)
 //    [],                       // globals (accessed with getglobal/setglobal)
-//    1e7                       // maximum number of instructions (MUST be >0)
+//    1e7,                      // maximum number of instructions (MUST be >0)
+//    new WeakSet(),            // graph tag set (arrays tagged with dtgraph)
 // ]
 // or [entrypoint,0,[],[],[],1e7] for short
 // function returns state in same format. the instruction count will tell you
@@ -31,7 +32,8 @@
 			stack,
 			rstack,
 			globals,
-			max_instructions // XXX(size) this is only required for "live coding safety" and step debugging
+			max_instructions, // XXX(size) this is only required for "live coding safety" and step debugging
+			graph_tag_set,
 		] = state,
 
 		current_opcode,
@@ -179,6 +181,7 @@
 		_ => { if (!POP()) throw new Error("ASSERTION FAILED"); }, // assert
 		_ => { console.log("STACK", stack, JSON.stringify(stack), "/R", rstack); }, // dump
 		_ => 1, // brk
+		_ => (graph_tag_set.add(TOP()),0) // dtgraph
 	);
 	/*ST4}DEBUG*/
 

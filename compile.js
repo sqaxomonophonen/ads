@@ -56,15 +56,19 @@ function open(file) {
 
 	function set_top() { top = file_stack[file_stack.length-1]; };
 
-	function push_file(filename) {
+	function push_src(filename, src) {
 		file_stack.push({
 			filename,
+			src,
 			line: 1,
 			cursor: 0,
 			cursor_at_beginning_of_line: 0,
-			src: RESOLVE_FILE(filename),
 		});
 		set_top();
+	}
+
+	function push_file(filename) {
+		push_src(filename, RESOLVE_FILE(filename));
 	}
 
 	function pop_file() {
@@ -117,7 +121,7 @@ function open(file) {
 		while (!one_of(get(), chars)) {};
 	}
 
-	return { get_mark_pos, push_file, pop_file, get, get_lines, mark, eat_while_match, skip_whitespace, skip_until_match_one_of, error, warn };
+	return { get_mark_pos, push_file, push_src, pop_file, get, get_lines, mark, eat_while_match, skip_whitespace, skip_until_match_one_of, error, warn };
 }
 
 function process_4st_file(path) {
@@ -200,9 +204,6 @@ function process_4st_file(path) {
 		[   WORD    , "arrjoin"   ,  ID     ,  "arrjoin"     ], //  [1,2] [3,4] -- [1,2,3,4]
 		[   WORD    , "arrsplit"  ,  ID     ,  "arrsplit"    ], //  [1,2,3,4] 3 -- [1,2,3] [4]
 
-		[   WORD    , "bless"     ,  ID     ,  "bless"       ], //    [1,2,3] 9 -- [1,2,3,t:9]
-		[   WORD    , "identify"  ,  ID     ,  "identify"    ], //  [1,2,3,t:9] -- [1,2,3,t:9] 9
-
 		// graph
 		[   WORD    , "thru"      ,  USRWORD,  "graph_thru"     ], //                  n -- n-input, n-output, pass-thru graph
 		[   WORD    , "curvegen"  ,  USRWORD,  "graph_curvegen" ], //              curve -- curve generator graph
@@ -212,11 +213,13 @@ function process_4st_file(path) {
 		[   OP1     , "@"         ,  USRWORD,  "graph_comprec"  ], //              A B n -- A@B with n samples of delay (similar to the FAUST "~" recursion operator)
 		[   WORD    , "boxen"     ,  USRWORD,  "graph_boxen"    ], //                  G -- G (encapsulate "unit" for performance reasons)
 
-		// debug symbols should be used only in tests
+		// these should not exist in release builds; they're used for
+		// unit/self testing, debugging, etc.
 
 		[   WORD    , "assert"    ,  ID     ,  "DEBUG"       ], // pop value; crash if zero
 		[   WORD    , "dump"      ,  ID     ,  "DEBUG"       ], // dump stack/rstack contents
 		[   WORD    , "brk"       ,  ID     ,  "DEBUG"       ], // breakpoint
+		[   WORD    , "DTGRAPH"   ,  ID     ,  "DEBUG"       ], // ( [] -- [] ) add "graph" type tag to array (unobservable inside program, but not in vm/outside)
 	];
 
 	const lang_one_char_to_vm_op_map = {};
@@ -254,6 +257,15 @@ function process_4st_file(path) {
 	const PUSH_NUMBER_IMM_INDEX_OF_WORD=401, BUILTIN_WORD=402, USER_WORD=403, PUSH_NUMBER_IMM=404, ONE_CHAR_OP=405;
 
 	const src = open(path);
+
+	const IS_RELEASE = false;
+	let preamble;
+	if (IS_RELEASE) {
+		preamble = ": _dtgraph  ;\n";
+	} else {
+		preamble = ": _dtgraph  DTGRAPH  ;\n";
+	}
+	src.push_src("<preamble.4st>", preamble);
 
 	const is_test_word = word => word.startsWith("test_");
 	const is_main_word = word => word.startsWith("main_");
@@ -610,7 +622,8 @@ function process_4st_file(path) {
 			let vm_state = [
 				word_index, 0,
 				[], [], [],
-				MAX_INSTRUCTIONS
+				MAX_INSTRUCTIONS,
+				new WeakSet(),
 			];
 			while (vm_state[0] >= 0) {
 				vm_state = test_prg.vm(test_prg.vm_words, vm_state);
@@ -624,7 +637,7 @@ function process_4st_file(path) {
 				*/
 			}
 
-			const [ pc0, pc1, stack, rstack, globals, counter ] = vm_state;
+			const [ pc0, pc1, stack, rstack, globals, counter, graph_tag_set ] = vm_state;
 			//console.log([pc0,pc1]);
 			//console.log(globals);
 			const n_ops = MAX_INSTRUCTIONS - counter;
