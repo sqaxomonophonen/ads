@@ -199,7 +199,7 @@ window.onload = () => {
 		}
 
 		function select_index(i) {
-			ed.innerHTML = escape_html(prg.files[i][1]);
+			ed.innerHTML = prg.files[i][1].split("\n").map(line => "<div>" + escape_html(line) + "</div>").join("");
 		}
 
 		sel.addEventListener("change", (ev) => {
