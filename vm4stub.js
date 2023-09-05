@@ -26,6 +26,8 @@
 // convention: tag code that should be different/removed when doing size
 // optimized release builds with "XXX(size)" and maybe a comment about it.
 
+// comments in the format of "/*ST4...*/" are directives for compiler.js
+
 (words, state) => {
 	let
 		[
@@ -164,6 +166,7 @@
 	/*ST4:isnumber*/push_op(_=>u(!TOP().pop));
 	/*ST4:isarr*/push_op(_=>u(!!TOP().pop));
 
+	// probably more than a little inspired by stb_ds.h naming
 	/*ST4:arrnew*/     push_op(_ => u([]));
 	/*ST4:arrlen*/     push_op(_ => u(TOP().length));
 	/*ST4:arrpush*/    push_op(_ => 0*PICK(1).push(POP()));
@@ -174,9 +177,6 @@
 	/*ST4:arrset*/     push_op((__k,__v) => { [__k,__v] = s(2); TOP()[__k] = __v; });
 	/*ST4:arrjoin*/    push_op((__a,__b) => { [__a,__b] = s(2); u([...__a, ...__b]); });
 	/*ST4:arrsplit*/   push_op((__pivot, __xs) => { __pivot = POP(); __xs = POP(); u(__xs.slice(0,__pivot)); u(__xs.slice(__pivot)); });
-
-	/*ST4:bless*/      push_op(__t => { __t = POP(); TOP().t=__t; });
-	/*ST4:identify*/   push_op(_ => u(TOP().t|0));
 
 	/*ST4{DEBUG*/
 	push_op(
