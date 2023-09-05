@@ -8,7 +8,7 @@
 //    [],                       // rstack (return/loop stack)
 //    [],                       // globals (accessed with getglobal/setglobal)
 //    1e7,                      // max op count; MUST be >0
-//    new WeakSet(),            // graph tag set (arrays tagged with dtgraph)
+//    new WeakSet(),            // graph tag set (arrays tagged with _DTGRAPH)
 // ]
 // the function returns state in same format (so the VM can be re-entered after
 // execution breaks). the "max op count" (index 5) is decremented for each op
@@ -183,7 +183,7 @@
 		_ => { if (!POP()) throw new Error("ASSERTION FAILED"); }, // assert
 		_ => { console.log("STACK", stack, JSON.stringify(stack), "/R", rstack); }, // dump
 		_ => 1, // brk
-		_ => (graph_tag_set.add(TOP()),0) // dtgraph
+		_ => (graph_tag_set.add(TOP()),0) // _DTGRAPH
 	);
 	/*ST4}DEBUG*/
 

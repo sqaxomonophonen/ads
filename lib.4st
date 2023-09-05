@@ -22,7 +22,7 @@
 
 : newgraph
    arrnew
-   _dtgraph ( no-op in release builds, but tags object as graph in debug builds )
+   DTGRAPH ( no-op in release builds, but tags object as graph in debug builds )
    0 arrpush      ( number of inputs )
    arrnew arrpush ( work expressions )
    arrnew arrpush ( delay tuples )

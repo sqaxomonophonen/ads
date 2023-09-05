@@ -1,6 +1,8 @@
-function new_compiler(resolve_file) {
-	const WORD=101, NUMBER=102, OP1=203, CALL=204;
-	const ID=201, INFIX=202, PREFIX=203, MATH1=211, USRWORD=299;
+function new_compiler(read_file_fn) {
+	// Q: what's the best way to do enums in plain javascript?
+	const WORD="WORD", ID="ID", NUMBER="NUMBER", CALL="CALL", OP1="OP1",
+	INFIX="INFIX", PREFIX="PREFIX", MATH1="MATH1", USER_WORD="USER_WORD";
+
 	const ISA = [
 		// NOTE: ISA order must match vm4stub.js order
 
@@ -79,13 +81,13 @@ function new_compiler(resolve_file) {
 		[   WORD    , "arrsplit"  ,  ID     ,  "arrsplit"    ], //  [1,2,3,4] 3 -- [1,2,3] [4]
 
 		// graph
-		[   WORD    , "thru"      ,  USRWORD,  "graph_thru"     ], //                  n -- n-input, n-output, pass-thru graph
-		[   WORD    , "curvegen"  ,  USRWORD,  "graph_curvegen" ], //              curve -- curve generator graph
-		[   OP1     , "~"         ,  USRWORD,  "graph_compseq"  ], //                A B -- A~B (see FAUST sequential composition)
-		[   OP1     , ","         ,  USRWORD,  "graph_comppar"  ], //                A B -- A,B (see FAUST parallel composition)
-		[   WORD    , "swizz"     ,  USRWORD,  "graph_swizz"    ], // G i1 i2 ... i(n) n -- n-output graph picking outputs i1 to i(n) from graph G
-		[   OP1     , "@"         ,  USRWORD,  "graph_comprec"  ], //              A B n -- A@B with n samples of delay (similar to the FAUST "~" recursion operator)
-		[   WORD    , "boxen"     ,  USRWORD,  "graph_boxen"    ], //                  G -- G (encapsulate "unit" for performance reasons)
+		[   WORD    , "thru"      ,  USER_WORD ,  "graph_thru"     ], //                  n -- n-input, n-output, pass-thru graph
+		[   WORD    , "curvegen"  ,  USER_WORD ,  "graph_curvegen" ], //              curve -- curve generator graph
+		[   OP1     , "~"         ,  USER_WORD ,  "graph_compseq"  ], //                A B -- A~B (see FAUST sequential composition)
+		[   OP1     , ","         ,  USER_WORD ,  "graph_comppar"  ], //                A B -- A,B (see FAUST parallel composition)
+		[   WORD    , "swizz"     ,  USER_WORD ,  "graph_swizz"    ], // G i1 i2 ... i(n) n -- n-output graph picking outputs i1 to i(n) from graph G
+		[   OP1     , "@"         ,  USER_WORD ,  "graph_comprec"  ], //              A B n -- A@B with n samples of delay (similar to the FAUST "~" recursion operator)
+		[   WORD    , "boxen"     ,  USER_WORD ,  "graph_boxen"    ], //                  G -- G (encapsulate "unit" for performance reasons)
 
 		// these should not exist in release builds; they're used for
 		// unit/self testing, debugging, etc.
@@ -96,407 +98,469 @@ function new_compiler(resolve_file) {
 		[   WORD    , "DTGRAPH"   ,  ID     ,  "DEBUG"       ], // ( [] -- [] ) add "graph" type tag to array (unobservable inside program, but not in vm/outside)
 	];
 
-	function match(ch, patterns) {
-		for (const p of patterns) {
-			if (p.length === 1) {
-				if (ch === p[0]) return true;
-			} else if (p.length === 2) {
-				if (p[0] <= ch && ch <= p[1]) return true;
-			} else {
-				throw new Error("bad pattern: " + JSON.stringify(p));
-			}
-		}
-		return false;
+	let builtin_word_ii_map = {}, one_char_op_ii_map = {}, number_ii, call_ii;
+	for (let i = 0; i < ISA.length; i++) {
+		const [ typ, val ] = ISA[i];
+		if (typ === WORD)   builtin_word_ii_map[val] = i;
+		if (typ === OP1)    one_char_op_ii_map[val]  = i;
+		if (typ === NUMBER) number_ii = i;
+		if (typ === CALL)   call_ii = i;
 	}
+	if (number_ii === undefined || call_ii === undefined) throw new Error("XXX");
 
-	const one_of = (ch, chars) => chars.indexOf(ch) >= 0;
+	const BEGIN_WORD="BEGIN_WORD", DIRECTIVE="DIRECTIVE",
+	COMMENT="COMMENT", BUILTIN_WORD="BUILTIN_WORD", END_WORD="END_WORD",
+	OP="OP", BEGIN_TABLE_WORD="BEGIN_TABLE_WORD",
+	BEGIN_INLINE_WORD="BEGIN_INLINE_WORD", WORD_INDEX="WORD_INDEX",
+	RESOLVE_WORD_INDEX="RESOLVE_WORD_INDEX", FLATTEN_INLINE="FLATTEN_INLINE"
+	;
 
-	const WHITESPACE = " \t\n\r";
+	function tokenize_line(line, pos) {
+		let mark_pos, token_pos;
 
-	function open(file) {
-		let file_stack = [], cursor_mark, mark_pos, top;
+		if (pos === undefined) pos = 0;
 
-		function set_top() { top = file_stack[file_stack.length-1]; };
+		const get_char = () => line[pos++];
 
-		function push_src(filename, src) {
-			file_stack.push({
-				filename,
-				src,
-				line: 1,
-				cursor: 0,
-				cursor_at_beginning_of_line: 0,
-			});
-			set_top();
-		}
-
-		function push_file(filename) {
-			push_src(filename, resolve_file(filename));
-		}
-
-		function pop_file() {
-			file_stack.pop();
-			set_top();
-			return file_stack.length === 0;
-		}
-
-		push_file(file);
-
-		let disallowing_newlines_inside = null;
-		function disallow_newline_inside(context) {
-			disallowing_newlines_inside = context;
-		}
-		// disallow_newline_inside() is used to prevent "special
-		// tokenizer state" (comments and word definition header) from
-		// crossing line boundaries, so e.g. comments have to begin and
-		// end on the same line. The inspiration comes from ziglang
-		// which generally allows individual lines to be tokenized out
-		// of context. It's not much of an inconvenience for the
-		// programmer, but makes source reflection (like syntax
-		// highlighting) much easier. I also suspect language designers
-		// commonly curse at editor designers because syntax
-		// highlighting constantly breaks, not realizing (or wanting to
-		// realize) that it's a hard problem to solve in the editor
-		// code, and an easy one to solve in the language. /rant
-
-		function allow_newline() {
-			disallowing_newlines_inside = null;
-		}
-
-		const get_pos_array = () => [top.filename, top.line, (top.cursor - top.cursor_at_beginning_of_line + 1)];
-		const get_pos = () => {
-			const ps = get_pos_array();
-			return "file " + ps[0] + ", line " + ps[1] + ", column " + ps[2];
-		};
-
-		function warn(msg) { console.warn("WARNING at " + get_pos() + ": " + msg); };
-		function error(msg) { throw new Error("at " + get_pos() + ": " + msg); };
-
-		function get() {
-			const ch = top.src[top.cursor++];
-			if (ch === "\n" && top.cursor > top.cursor_at_beginning_of_line) {
-				if (disallowing_newlines_inside !== null) {
-					error("newline is not allowed inside " + disallowing_newlines_inside);
-				}
-				top.line++;
-				top.cursor_at_beginning_of_line = top.cursor;
-			}
-			return ch;
-		}
-
-		const get_lines = () => top.src.split("\n")
-		function mark() {
-			cursor_mark = top.cursor;
-			mark_pos = get_pos_array();
-		}
-		const get_mark_pos = _ => mark_pos;
-
-		function eat_while_match(pattern) {
-			for (;;) {
-				const ch = get();
-				if (ch === undefined) error("ate past EOF");
-				if (!match(ch, pattern)) break;
-			}
-			top.cursor--;
-			return top.src.slice(cursor_mark, top.cursor);
-		}
+		const is_whitespace = (ch) => (ch === " " || ch === "\t");
 
 		function skip_whitespace() {
-			while (one_of(get(), WHITESPACE)) {};
-			top.cursor--;
+			while (is_whitespace(get_char())) {}
+			pos--;
 		}
 
-		function skip_until_match_one_of(chars) {
-			while (!one_of(get(), chars)) {};
+		function mark() {
+			mark_pos = pos;
 		}
 
-		return {
-			push_file, push_src, pop_file,
-			get_mark_pos, get, get_lines, mark,
-			eat_while_match, skip_whitespace, skip_until_match_one_of,
-			error, warn,
-			disallow_newline_inside, allow_newline
-		};
+		function mark_token_begin() {
+			mark();
+			token_pos = pos
+		}
+
+		function match(ch, patterns) {
+			for (const p of patterns) {
+				if (p.length === 1) {
+					if (ch === p[0]) return true;
+				} else if (p.length === 2) {
+					if (p[0] <= ch && ch <= p[1]) return true;
+				} else {
+					throw new Error("bad pattern: " + JSON.stringify(p));
+				}
+			}
+		}
+
+		function eat_while_match(patterns) {
+			for (;;) {
+				const ch = get_char();
+				if (ch === undefined || !match(ch, patterns)) break;
+			}
+			pos--;
+			return line.slice(mark_pos, pos);
+		}
+
+		const ERR4 = (msg) => { throw ["ERR4",[null,null,token_pos],msg]; };
+
+		let is_directive     = false;
+		let is_non_directive = false;
+
+		let tokens = [];
+		function push_token(type, data0, data1, data2) {
+			if (type === DIRECTIVE) {
+				if (is_directive) ERR4("line cannot contain more than one directive");
+				is_directive = true;
+			} else if (type !== COMMENT) {
+				is_non_directive = true;
+			}
+			if (is_directive && is_non_directive) ERR4("line cannot contain both directives and non-directives");
+
+			let token = [[null, null, token_pos, pos], type];
+			if (data0) {
+				token.push(data0);
+				if (data1) {
+					token.push(data1);
+					if (data2) {
+						token.push(data2);
+					}
+				}
+			}
+			tokens.push(token);
+		}
+
+		const WORD_PATTERN0   = ["az","AZ","_"];
+		const NUMBER_PATTERN  = ["09"];
+		const WORD_PATTERN    = [...WORD_PATTERN0, ...NUMBER_PATTERN ];
+
+		for (;;) {
+			mark_token_begin();
+			const ch = get_char();
+			if (ch === undefined) {
+				break;
+			} else if (is_whitespace(ch)) {
+				continue;
+			} else if (ch === "#") {
+				mark();
+				const directive = eat_while_match(["az"]);
+				if (directive === "include") {
+					skip_whitespace();
+					mark();
+					const include_path = eat_while_match([...WORD_PATTERN, "."]);
+					push_token(DIRECTIVE, "include", include_path);
+				} else if (directive === "define") {
+					skip_whitespace();
+					mark();
+					const defword = eat_while_match(WORD_PATTERN);
+					push_token(DIRECTIVE, "define", defword, tokenize_line(pos));
+					break;
+				} else {
+					ERR4("unhandled directive: " + directive);
+				}
+			} else if (ch === "\\") {
+				mark();
+				const word = eat_while_match(WORD_PATTERN);
+				push_token(WORD_INDEX, word);
+			} else if (match(ch, WORD_PATTERN0)) {
+				const word = eat_while_match(WORD_PATTERN);
+				if (builtin_word_ii_map[word] !== undefined) {
+					push_token(BUILTIN_WORD, word);
+				} else {
+					push_token(USER_WORD, word);
+				}
+			} else if (match(ch, NUMBER_PATTERN)) {
+				push_token(NUMBER, eat_while_match(NUMBER_PATTERN));
+			} else if (ch === ":") {
+				let type = null;
+				const ch2 = get_char();
+				if (ch2 === "@" || ch2 === "=") {
+					type = ch2;
+				} else {
+					pos--;
+				}
+				skip_whitespace();
+				mark();
+				const word = eat_while_match(WORD_PATTERN)
+				if (word.trim().length === 0) ERR4("expected word");
+				if (type === "@") {
+					push_token(BEGIN_TABLE_WORD, word);
+				} else if (type === "=") {
+					push_token(BEGIN_INLINE_WORD, word);
+				} else if (type === null) {
+					push_token(BEGIN_WORD, word);
+				} else {
+					throw new Error("UNREACHABLE");
+				}
+			} else if (ch === ";") {
+				push_token(END_WORD);
+			} else if (one_char_op_ii_map[ch] !== undefined) {
+				push_token(OP, ch);
+			} else if (ch === "(") {
+				let depth = 1;
+				while (depth > 0) {
+					const ch2 = get_char();
+					if (ch2 === undefined) break;
+					depth += (ch2 === "(") - (ch2 === ")");
+				}
+				if (depth > 0) ERR4("comment not terminated (multi-line comments are not possible)");
+				push_token(COMMENT);
+			} else {
+				ERR4("unexpected character: " + ch);
+			}
+		}
+
+		return tokens;
+	}
+
+	function ERR4_PATCH(e, patch) {
+		if (e.length !== undefined && e[0] === "ERR4") {
+			for (let i = 0; i < patch.length; i++) {
+				if (patch[i] === null) continue;
+				e[1][i] = patch[i];
+			}
+			return e;
+		} else {
+			return e;
+		}
+	}
+
+	function tokenize_lines(lines) {
+		let tokens = [];
+		for (let line_number = 0; line_number < lines.length; line_number++) {
+			const line = lines[line_number];
+			try {
+				for (const line_token of tokenize_line(line)) {
+					line_token[0][1] = line_number;
+					tokens.push(line_token);
+				}
+			} catch (e) {
+				throw ERR4_PATCH(e, [null, line_number, null]);
+			}
+		}
+		return tokens;
+	}
+
+	const tokenize_string = (filename, string) => {
+		try {
+			return tokenize_lines(string.split("\n")).map(x => { x[0][0] = filename; return x; });
+		} catch (e) {
+			throw ERR4_PATCH(e, [filename, null, null]);
+		}
+	};
+
+	const tokenize_file = (filename) => tokenize_string(filename, read_file_fn(filename));
+	function preprocess_file(filename, header_tokens) {
+		let stack = [];
+		const push = (toks) => stack.push([0,toks]);
+		push(tokenize_file(filename));
+		if (header_tokens) push(header_tokens);
+		let tokens = [];
+		while (stack.length > 0) {
+			let e = stack[stack.length-1];
+			const file_tokens = e[1];
+			const file_token = file_tokens[e[0]++];
+			if (file_token === undefined) {
+				stack.pop();
+			} else if (file_token[1] === DIRECTIVE) {
+				const dt = file_token[2];
+				if (dt === "include") {
+					push(tokenize_file(file_token[3]));
+				} else {
+					throw new Error("unhandled directive type: " + dt);
+				}
+			} else {
+				tokens.push(file_token);
+			}
+		}
+		return tokens;
 	}
 
 	const is_test_word = word => word.startsWith("test_");
 	const is_main_word = word => word.startsWith("main_");
 
-	function compile(path) {
-		const lang_one_char_to_vm_op_map = {};
-		const lang_builtin_word_to_vm_op_map = {};
-		let lang_number_vm_op;
-		let lang_call_vm_op;
-		for (let i = 0; i < ISA.length; i++) {
-			const line = ISA[i];
-			const [ ltype, lid, vtype, vid ] = line;
-			const vm_op = [ i, vtype, vid ];
-			switch (ltype) {
-			case OP1:
-				if (lid.length !== 1) throw new Error("SANITY CHECK FAILURE: 1ch op with length != 1?!");
-				if (("a" <= lid && lid <= "z") || ("0" <= lid && lid <= "9")) throw new Error("FAILED SANITY CHECK: bad character " + lid);
-				lang_one_char_to_vm_op_map[lid] = vm_op;
-				break;
-			case WORD:
-				lang_builtin_word_to_vm_op_map[lid] = vm_op;
-				break;
-			case NUMBER: lang_number_vm_op = vm_op; break;
-			case CALL:   lang_call_vm_op   = vm_op; break;
-			default: throw new Error("unhandled ltype/0 in  " + JSON.stringify(line));
+	function compile(filename, is_release) {
+		let preamble = "";
+		preamble += ":= DTGRAPH" + (is_release ? "" : " _DTGRAPH") + " ;\n";
+		const raw_tokens = preprocess_file(filename, tokenize_string("<preamble.4st>", preamble));
+
+		const token_it = (_ => { let i=0; return _ => raw_tokens[i++]; })();
+		let word_serial = 0;
+
+		function get_word_tree(depth) {
+			const word = {
+				subwords: [],
+				serial: ++word_serial,
+			};
+			if (depth > 0) {
+				word.ops = [];
+				word.oppos = [];
 			}
-		}
-		if (!lang_number_vm_op) throw new Error("SANITY CHECK FAIL: no 'number' VM op");
-		if (!lang_call_vm_op)   throw new Error("SANITY CHECK FAIL: no 'call' VM op");
 
-		const new_word = () => ({ tokens: [], dbgpos: [] });
-
-		let word = new_word();
-		const root_word = word;
-		delete(root_word.tokens); // throw error if code attempts to push tokens onto top-level word
-		const word_stack = [word];
-
-		const PUSH_NUMBER_IMM_INDEX_OF_WORD=401, BUILTIN_WORD=402, USER_WORD=403, PUSH_NUMBER_IMM=404, ONE_CHAR_OP=405;
-
-		const src = open(path);
-
-		const IS_RELEASE = false;
-		let preamble;
-		if (IS_RELEASE) {
-			preamble = ": _dtgraph  ;\n";
-		} else {
-			preamble = ": _dtgraph  DTGRAPH  ;\n";
-		}
-		src.push_src("<preamble.4st>", preamble);
-
-
-		let defword_state = 0;
-		let word_sort_key_major = 0, word_sort_key_minor = 0;
-		function push_token(typ, value, vm_op) {
-			if (defword_state > 0) {
-				if (typ !== USER_WORD) src.error("expected USER_WORD");
-				word.name = value;
-				if (defword_state === 1) {
-					word_sort_key_major++;
-					word_sort_key_minor = 0;
-				} else if (defword_state === 2) {
-					word.is_word_table_entry = true;
-					if (word_sort_key_minor === 0) {
-						word_sort_key_major++;
-					}
-					word_sort_key_minor++;
-				} else {
-					throw new Error("unexpected defword state " + defword_state);
+			let end_of_word = false;
+			while (!end_of_word) {
+				const tok = token_it();
+				if (!tok) {
+					if (depth > 0) throw new Error("end of token stream inside word (depth="+depth+")");
+					break;
 				}
-				word.sort_key = [word_sort_key_major, word_sort_key_minor];
-				const word_scope = word_stack[word_stack.length-2];
-				if (word_scope.words === undefined) word_scope.words = [];
-				word_scope.words.push(word);
-				defword_state = 0;
-			} else {
-				if (word_stack.length < 2) src.error("only word definitions (\":<word>\") are allowed at the top level");
-				if (typ === USER_WORD && is_test_word(value)) src.error("'test_'-prefixed words are reserved for unit tests; they should not be called directly");
-				if (vm_op[1] === USRWORD) {
-					word.tokens.push([USER_WORD, vm_op[2], lang_call_vm_op]);
-				} else {
-					word.tokens.push([typ, value, vm_op]);
+				const [ pos, typ, arg0, arg1 ] = tok;
+				const push_op = (op) => {
+					if (!word.ops) throw ["ERR4", tok[0], "op in root scope not allowed"];
+					if (typeof op[0] !== "number") throw new Error("sanity check failed");
+					word.ops.push(op);
+					word.oppos.push(pos);
+				};
+				switch (typ) {
+				case DIRECTIVE: throw new Error("should not see directives here (missing preprocessor)");
+				case COMMENT: break; // skip
+
+				case BEGIN_WORD:
+				case BEGIN_TABLE_WORD:
+				case BEGIN_INLINE_WORD: {
+					const subword = get_word_tree((depth|0)+1);
+					subword.name = arg0;
+					if (typ === BEGIN_TABLE_WORD)  subword.is_table_word = true;
+					if (typ === BEGIN_INLINE_WORD) subword.is_inline_word = true;
+					word.subwords.push(subword);
+				} break;
+				case END_WORD:
+					end_of_word = true;
+					break;
+
+				case NUMBER:         push_op([number_ii, parseInt(arg0,10)]);  break;
+				case OP:             push_op([one_char_op_ii_map[arg0]]);      break;
+				case BUILTIN_WORD:   push_op([builtin_word_ii_map[arg0]]);     break;
+
+				case USER_WORD:
+					push_op([call_ii, [RESOLVE_WORD_INDEX, arg0]]);
+					break;
+				case WORD_INDEX:
+					push_op([number_ii, [RESOLVE_WORD_INDEX, arg0]]);
+					break;
+
+				default: throw new Error("unhandled token: " + JSON.stringify(tok));
 				}
-				word.dbgpos.push(src.get_mark_pos());
 			}
+			return word;
 		}
 
-		let comment_depth = 0;
-		for (;;) {
-			src.skip_whitespace();
-			src.mark();
-			const ch = src.get();
-			if (comment_depth > 0) {
-				if (ch === "(") {
-					comment_depth++;
-				} else if (ch == ")") {
-					comment_depth--;
-					if (comment_depth === 0) src.allow_newline();
-				}
-				continue;
-			}
-			if (ch === undefined) {
-				if (src.pop_file()) break;
-			} else if (ch === "#") {
-				src.mark();
-				const directive = src.eat_while_match(["az"]);
-				if (directive === "include") {
-					src.skip_whitespace();
-					src.mark();
-					const include_path = src.eat_while_match(["az","AZ",".","09","_"]);
-					src.push_file(include_path);
-				} else {
-					src.error("unhandled directive: " + directive);
+		let root_word = get_word_tree(raw_tokens);
 
-				}
-			} else if (ch === "\\") { // push word index
-				src.mark();
-				const word = src.eat_while_match(["az","09","_"]);
-				push_token(PUSH_NUMBER_IMM_INDEX_OF_WORD, word, lang_number_vm_op);
-			} else if /*word*/ (match(ch, ["az","AZ","_"])) {
-				if (defword_state > 0) src.allow_newline();
-				const word = src.eat_while_match(["az","AZ","09","_"]);
-				const builtin_vm_op = lang_builtin_word_to_vm_op_map[word];
-				if (builtin_vm_op) {
-					push_token(BUILTIN_WORD, word, builtin_vm_op);
-				} else {
-					push_token(USER_WORD, word, lang_call_vm_op);
-				}
-			} else if /*number */ (match(ch, ["09"])) {
-				const number = src.eat_while_match(["09"]);
-				push_token(PUSH_NUMBER_IMM, number, lang_number_vm_op);
-			} else if /*word definition*/ (ch === ":") {
-				if (defword_state === 0) {
-					word = new_word();
-					word_stack.push(word);
-					src.disallow_newline_inside("word definition header (\":<word>\")");
-				}
-				defword_state++;
-				if (!(1 <= defword_state && defword_state <= 2)) src.error("only : and :: allowed");
-			} else if /*end of word definition (implicit return)*/ (ch === ";") {
-				if (word_stack.length === 0) src.error("left top-level word");
-				word_stack.pop();
-				word = word_stack[word_stack.length-1];
-			} else if (lang_one_char_to_vm_op_map[ch]) {
-				push_token(ONE_CHAR_OP, ch, lang_one_char_to_vm_op_map[ch]);
-			} else if /*comment*/ (ch === "(") {
-				src.disallow_newline_inside("comments");
-				comment_depth++;
-			} else {
-				src.error("unexpected character");
-			}
-		}
+		const vm4stub_lines = read_file_fn("vm4stub.js").split("\n");
 
-		if (comment_depth !== 0) src.error("unterminated comment");
-
-		if (word_stack.length !== 1) src.error("word definition was not terminated");
-		if (word !== root_word) throw new Error("bad state");
-
-		const vm4stub_lines = open("vm4stub.js").get_lines();
-
-		let _lk_counter = 1;
 		function trace_program(match_fn) {
-			const lift_set = {};
+			const lift_set = new Set();
 			let prg_words = [];
-			function lift(word_stack) {
+			function uplift_word(word_stack, inline_ops) {
 				if (word_stack.length < 2) throw new Error("ASSERTION ERROR: top-level cannot be lifted");
 				const word = word_stack[word_stack.length-1];
 
-				if (word._lk === undefined) word._lk = _lk_counter++;
-				if (lift_set[word._lk]) return;
-				lift_set[word._lk] = true;
+				if (!inline_ops) {
+					// XXX don't really know if refcount is
+					// useful...
+					//if (word.refcount === undefined) word.refcount = 0;
+					//word.refcount++;
+					if (lift_set.has(word)) return;
+					lift_set.add(word);
+				}
 
-				for (const token of word.tokens) {
-					const typ = token[0];
-					const is_w  = (typ === USER_WORD);
-					const is_wi = (typ === PUSH_NUMBER_IMM_INDEX_OF_WORD);
-					if (!is_w && !is_wi) continue;
-					const name = token[1];
+				for (let opi = 0; opi < word.ops.length; opi++) {
+					let op = word.ops[opi];
+					let op_was_inlined = false;
+					const maybe_inline = () => {
+						if (op_was_inlined) throw new Error("XXX 2+ inlines?");
+						if (inline_ops) {
+							inline_ops.push(op);
+						}
+						op_was_inlined = true;
+					};
+
+					// some built-in words or ops map to
+					// standard library functions.
+					// resolve/patch that here
+					let ise = ISA[op[0]];
+					if (ise[2] === USER_WORD) {
+						op = word.ops[opi] = [call_ii, [RESOLVE_WORD_INDEX, ise[3]]];
+					}
+
+					if (!(typeof op[1] === "object" && op[1][0] === RESOLVE_WORD_INDEX)) {
+						maybe_inline();
+						continue;
+					}
+					const ii = op[0], name = op[1][1];
 					let found = false;
 					for (let i0 = word_stack.length-1; i0 >= 0 && !found; i0--) {
 						const w0 = word_stack[i0];
-						const w0s = w0.words || [];
+						const w0s = w0.subwords || [];
 						for (let i1 = 0; i1 < w0s.length && !found; i1++) {
 							const w1 = w0s[i1];
 							if (w1.name === name) {
 								found = true;
-								if (is_wi && w1.is_word_table_entry) {
+								if (ii === number_ii && w1.is_table_word) {
+									maybe_inline();
 									// trace out word table
 									let left, right;
-									for (left  = i1; left >= 0          && w0s[left].is_word_table_entry; left--) {}
+									for (left  = i1; left >= 0          && w0s[left].is_table_word; left--) {}
 									left++;
-									for (right = i1; right < w0s.length && w0s[right].is_word_table_entry; right++) {}
+									for (right = i1; right < w0s.length && w0s[right].is_table_word; right++) {}
 									right--
 									for (let i2 = left; i2 <= right; i2++) {
 										const w2 = w0s[i2];
-										lift([...word_stack.slice(0, i0+1), w2]);
+										if (w2.is_inline_word) throw new Error("XXX");
+										uplift_word([...word_stack.slice(0, i0+1), w2]);
+									}
+								} else if (ii === call_ii) {
+									if (w1.is_inline_word) {
+										if (!inline_ops) inline_ops = [];
+									} else {
+										maybe_inline();
+										inline_ops = undefined;
+									}
+									uplift_word([...word_stack.slice(0, i0+1), w1], inline_ops);
+									if (w1.is_inline_word) {
+										word.ops[opi] = [FLATTEN_INLINE, inline_ops];
 									}
 								} else {
-									lift([...word_stack.slice(0, i0+1), w1]);
+									throw new Error("UNREACHABLE");
 								}
 							}
 						}
 					}
 					if (!found) throw new Error("word not found in scope: " + name);
 				}
-				prg_words.push(word);
+
+				if (!inline_ops) prg_words.push(word);
 			}
 
 			function rec(word_stack) {
 				const word = word_stack[word_stack.length-1];
 				if (word.name && match_fn(word_stack.length-2, word.name)) {
 					word.do_export = true;
-					lift(word_stack);
+					uplift_word(word_stack);
 				}
-				for (let subword of word.words || []) rec([...word_stack, subword]);
+				for (let subword of word.subwords || []) rec([...word_stack, subword]);
 			}
 			rec([root_word]);
 
-			prg_words.sort((a,b) => {
-				const d0 = a.sort_key[0] - b.sort_key[0];
-				if (d0 !== 0) return d0;
-				const d1 = a.sort_key[1] - b.sort_key[1];
-				return d1;
-			});
+			prg_words.sort((a,b) => a.serial - b.serial);
 
+			// do a bunch of things:
+			//  - flatten inlines
+			//  - resolve word indices
+			//  - figure out which VM ops are required
 			const required_vm_ids = {};
 			const required_vm_other_ops = {};
-			for (const w of prg_words) {
-				for (const t of w.tokens) {
-					const vm_op_id = t[2][0];
-					const line = ISA[vm_op_id];
-					if (line[2] === ID) {
-						required_vm_ids[line[3]] = true;
+			for (const word of prg_words) {
+				for (let opi = 0; opi < word.ops.length; opi++) {
+					let op = word.ops[opi];
+					if (op[0] === FLATTEN_INLINE) {
+						word.ops = word.ops.slice(0, opi).concat(op[1]).concat(word.ops.slice(opi+1));
+						throw new Error("XXX also handle word.oppos");
+						opi--;
+						continue;
+					}
+
+					const ii = op[0];
+					const ise = ISA[ii];
+					const vtype = ise[2];
+					if (vtype === USER_WORD) {
+						throw new Error("XXX should've been handled earlier");
+					} else if (vtype === ID) {
+						required_vm_ids[ise[3]] = true;
 					} else {
-						required_vm_other_ops[vm_op_id] = true;
+						required_vm_other_ops[ii] = true;
+					}
+
+					if (typeof op[1] === "object" && op[1][0] === RESOLVE_WORD_INDEX) {
+						let resolved = false;
+						const name = op[1][1];
+						for (let wi = 0; wi < prg_words.length; wi++) {
+							if (prg_words[wi].name === name) {
+								op[1] = wi;
+								resolved = true;
+								break;
+							}
+						}
+						if (!resolved) throw new Error("could not resolve word: " + name);
 					}
 				}
 			}
 
+			// compact ISA by removing unused ops
+
 			let op_remap = {};
-			let op_idx = 0;
-			for (let i = 0; i < ISA.length; i++) {
-				const line = ISA[i];
-				const keep = (line[2] === ID && (line[3] === "STATIC" || required_vm_ids[line[3]])) || required_vm_other_ops[i];
-				if (keep) op_remap[i] = op_idx++;
+			{
+				let op_idx = 0;
+				for (let ii = 0; ii < ISA.length; ii++) {
+					const ise = ISA[ii];
+					const keep = (ise[2] === ID && (ise[3] === "STATIC" || required_vm_ids[ise[3]])) || required_vm_other_ops[ii];
+					if (keep) op_remap[ii] = op_idx++;
+				}
 			}
 
 			const vm_words = [];
 			const dbg_words = [];
-			for (const w of prg_words) {
-				let inst = [];
-				for (const t of w.tokens) {
-					//console.log(t);
-					const opi = op_remap[t[2][0]];
-					if (opi === undefined) throw new Error("op with no mapping");
-					//console.log(opi);
-					switch (t[0]) {
-					case BUILTIN_WORD:
-					case ONE_CHAR_OP:
-						inst.push([opi]);
-						break;
-					case PUSH_NUMBER_IMM:
-						inst.push([opi, parseInt(t[1], 10)]);
-						break;
-					case USER_WORD:
-					case PUSH_NUMBER_IMM_INDEX_OF_WORD: {
-						let word_index = -1;
-						for (let i1 = 0; i1 < prg_words.length; i1++) {
-							if (prg_words[i1].name === t[1]) {
-								word_index = i1;
-							}
-						}
-						if (word_index === -1) throw new Error("not found: " + t[1]);
-						inst.push([opi, word_index]);
-					} break;
-					default:
-						throw new Error("unhandled tok: " + JSON.stringify(t));
-					}
-				}
-				vm_words.push(inst);
-				dbg_words.push(w.dbgpos);
+			for (const word of prg_words) {
+				vm_words.push(word.ops.map(op => [op_remap[op[0]], ...op.slice(1)]));
+				dbg_words.push(word.oppos);
 			}
 
 			const export_word_indices = [];
@@ -609,13 +673,21 @@ function new_compiler(resolve_file) {
 				vm_src,
 			};
 		}
+
 		return {
 			trace_program,
 		};
 	};
 
 	return {
+		tokenize_line,
+		tokenize_lines,
+		tokenize_string,
+		tokenize_file,
+		preprocess_file,
 		compile,
+		compile_debug:   f=>compile(f,false),
+		compile_release: f=>compile(f,true),
 		is_test_word,
 		is_main_word,
 	};

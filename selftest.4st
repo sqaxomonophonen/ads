@@ -96,17 +96,17 @@
 
 : test_word_tables
 
-   ( a sequence of double-colon words are considered to be a "word table" if )
-   ( one or more of the words are referenced by the "push word index" or )
-   ( backslash or "\" operator. in that case you're guaranteed to be able to do )
-   ( "word index arithmetic" within the word table boundaries, whereas other word )
+   ( a sequence of :@-defined words are considered to be a "word table" if one )
+   ( or more of the words are referenced by the "push word index" or backslash )
+   ( or "\" operator. in that case you're guaranteed to be able to do "word )
+   ( index arithmetic" within the word table boundaries, whereas other word )
    ( indices may be rearranged by the compiler. this test only calls "api_three", )
    ( but indirectly a couple of times )
 
-   :: api_one   0 assert    ;
-   :: api_two   0 assert    ;
-   :: api_three 1 assert 42 ;
-   :: api_four  0 assert    ;
+   :@api_one   0 assert    ;
+   :@api_two   0 assert    ;
+   :@api_three 1 assert 42 ;
+   :@api_four  0 assert    ;
 
    : not_this_one 0 assert ;
 
@@ -116,6 +116,13 @@
    \api_two 1 + call    42 = assert
    \api_one 2 + call    42 = assert
    \api_four 1 - call   42 = assert
+;
+
+: test_inline_words
+   0 assert ( XXX not reached )
+   :=inline_mul10 10 * ;
+   42 inline_mul10   420 = assert
+   0 assert ( XXX not reached )
 ;
 
 : test_recursion
