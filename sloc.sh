@@ -1,2 +1,2 @@
 #!/usr/bin/env bash
-wc -l $(git ls-files '*.js' '*.4st' '*.html')
+wc -l $(git ls-files '*.js' ; git ls-files '*.html' ; git ls-files '*.4st' )
