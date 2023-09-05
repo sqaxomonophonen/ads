@@ -105,14 +105,15 @@ window.onload = () => {
 				//  38 up
 				//  39 right
 				//  40 down
-				console.log("arrow" + w);
+				console.log("ed arrow" + w);
 			}
 			//console.log(ev.which);
 
 		});
 
 		window.addEventListener("keydown", (ev) => {
-			if (ev.which === 27) {
+			const w = ev.which;
+			if (w === 27) {
 				hvim_toggle_mode();
 				ev.preventDefault();
 			}
@@ -123,7 +124,9 @@ window.onload = () => {
 
 	if (IS_OFFLINE) {
 		prg = {
-			files: [ [ "offline.4st", " ( offline.4st )\n" ] ]
+			files: [
+				[ "offline.4st", " ( offline.4st )\n" ]
+			]
 		};
 		init_editor();
 	} else {
