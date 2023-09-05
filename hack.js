@@ -52,13 +52,13 @@ window.onload = () => {
 				ed.setAttribute("contenteditable", "false");
 				add_class(root, "ed_border_cmd");
 				remove_class(root, "ed_border_edit");
-				mode.innerHTML = "COM";
+				mode.innerHTML = "COMMAND";
 				mode.setAttribute("title", "Command Mode");
 			} else if (hvim_mode === 1) {
 				ed.setAttribute("contenteditable", "true");
 				add_class(root, "ed_border_edit");
 				remove_class(root, "ed_border_cmd");
-				mode.innerHTML = "ED";
+				mode.innerHTML = "EDIT";
 				mode.setAttribute("title", "Edit Mode");
 			}
 			mode.style.color = getComputedStyle(root).borderColor;
