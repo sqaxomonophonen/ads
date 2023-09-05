@@ -3,11 +3,17 @@ window.onload = () => {
 	const IS_OFFLINE = window.location.href.split(":")[0] === "file";
 
 	const CC = s=>s.charCodeAt(0);
-	const $ = s =>
-		  (s[0] === '#') ? document.getElementById(s.slice(1))
-		: (s[0] === '.') ? document.getElementsByClassName(s.slice(1))
-		: (s[0] === '<') ? document.createElement(s.slice(1,s.length-1))
-		: document.getElementByTagName(s);
+	const $ = s => {
+		const [ c0, c1 ] = [ s[0], s.slice(-1) ];
+		return  c0 === "#"               ? document.getElementById(s.slice(1))            :
+		        c0 === "."               ? document.getElementsByClassName(s.slice(1))    :
+		        c0 === "<" && c1 === ">" ? document.createElement(s.slice(1,s.length-1))  :
+		                                   document.getElementByTagName(s);
+	};
+
+	const UNREACHABLE = m => { throw new Error("UNREACHABLE/"+m) };
+
+	const escape_html = (s) => s.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#039;');
 
 	function class_set(em) {
 		let classes = (em.getAttribute("class")||"").split(" ").filter(x => x.length);
@@ -43,32 +49,145 @@ window.onload = () => {
 	let prg;
 
 	let hvim_mode = 0;
+	const COMMAND = 101, EDIT = 102, ANNOTATION = 103;
+	const WORD = 201, LINE = 202;
+	let hvim = {
+		mmode: COMMAND,
+		tmode: WORD,
+	};
+
+	let keybind_table = {};
+	function install_keybinds(keybinds) {
+		keybind_table = {};
+		const kbs = $("#keybinds");
+		kbs.innerHTML = "";
+		const ARROWS="&larr;&uarr;&rarr;&darr;";
+		for (let i = 0; i < keybinds.length; i++) {
+			const keybind = keybinds[i];
+			const [ sig, fn, title ] =
+				keybind === "CARET0" ? [     "["+ARROWS+"] move-caret", null, "Move caret around" ] :
+				keybind === "CARET1" ? [ "[hjkl"+ARROWS+"] move-caret", null, "Move caret around" ] :
+				keybind === "NUM"    ? [                     "[0-9] #", null, "Repeat N times"    ] :
+				keybind;
+			const i0 = sig.indexOf("[");
+			const i1 = sig.indexOf("]");
+			const do_join = sig[i1+1] !== " ";
+			const before = sig.slice(0,i0).trim();
+			const keydef = sig.slice(i0+1,i1).trim();
+			const after = sig.slice(i1+1).trim();
+			if (fn) {
+				for (let k of keydef.split("/")) {
+					let c = undefined;
+					if (k.toLowerCase() === "esc") {
+						c = "Escape";
+					} else if (k === ",") {
+						c = "Comma";
+					} else if (k.length === 1 && (CC("A") <= CC(k.toUpperCase()) && CC(k.toUpperCase()) <= CC("Z"))) {
+						c = "Key" + k.toUpperCase();
+					}
+					if (c === undefined) throw new Error("error in keydef: " + keydef);
+					keybind_table[c] = fn;
+				}
+			}
+			const kb = $("<keybind>");
+
+			const push_span = (txt) => {
+				if (txt.length === 0) return;
+				const e = $("<span>");
+				e.innerHTML = txt;
+				kb.appendChild(e);
+			};
+
+			if (i > 0) kbs.appendChild(document.createTextNode(" "));
+
+			push_span(before);
+
+			{
+				const e = $("<key>");
+				e.setAttribute("class", do_join ? "keyjoin" : "keyspace");
+				e.innerHTML = keydef;
+				kb.appendChild(e);
+			}
+
+			push_span(after);
+
+			if (title) kb.setAttribute("title", title);
+			kbs.appendChild(kb);
+		}
+	}
 
 	function refresh() {
 		{
 			const root = $("#ed_root");
 			const mode = $("#ed_mode");
-			if (hvim_mode === 0) {
+
+			{
+				const common_stuff = [
+					[ COMMAND    , "ed_border_cmd"        , "COMMAND"    , "Command Mode (keys execute commands; see keybinds)" ],
+					[ EDIT       , "ed_border_edit"       , "EDIT"       , "Edit Mode (functions like a normal text editor"     ],
+					[ ANNOTATION , "ed_border_annotation" , "ANNOTATION" , "Annotation Mode (let keybinds guide you)"           ],
+				];
+				for (const [id,cls,label,title] of common_stuff) {
+					if (hvim.mmode === id) {
+						mode.innerHTML = label;
+						mode.setAttribute("title", title);
+						add_class(root, cls);
+					} else {
+						remove_class(root, cls);
+					}
+				}
+			}
+
+			if (hvim.mmode === COMMAND) {
 				ed.setAttribute("contenteditable", "false");
-				add_class(root, "ed_border_cmd");
-				remove_class(root, "ed_border_edit");
-				mode.innerHTML = "COMMAND";
-				mode.setAttribute("title", "Command Mode");
-			} else if (hvim_mode === 1) {
+				install_keybinds([
+					[ "[Esc/i]nsert"   , _ => { hvim.mmode = EDIT; } ,   "Enter insert mode at beginning of word" ],
+					[ "[e]nd-insert"   , _ => { hvim.mmode = EDIT; } ,   "Enter insert mode at end of word" ],
+					[ "[a]ppend"       , _ => { hvim.mmode = EDIT; } ,   "Enter insert mode at beginning of next word" ],
+
+					hvim.tmode === WORD ? [ "[q] line-mode",   _ => { hvim.tmode = LINE; }, "Enter insert mode at beginning of next word" ] :
+					hvim.tmode === LINE ? [ "[q] word-mode",   _ => { hvim.tmode = WORD; }, "Enter insert mode at beginning of next word" ] :
+					UNREACHABLE(),
+
+					"NUM",
+
+					hvim.tmode === WORD ? [ "[c]hange-word",   _ => {}, "" ] :
+					hvim.tmode === LINE ? [ "[c]hange-line",   _ => {}, "" ] :
+					UNREACHABLE(),
+
+					hvim.tmode === WORD ? [ "[d]elete-word",   _ => {}, "" ] :
+					hvim.tmode === LINE ? [ "[d]elete-line",   _ => {}, "" ] :
+					UNREACHABLE(),
+
+					hvim.tmode === WORD ? [ "[y]ank-word",   _ => {}, "" ] :
+					hvim.tmode === LINE ? [ "[y]ank-line",   _ => {}, "" ] :
+					UNREACHABLE(),
+
+					[ "[p]aste"              , _ => {} ,   "Paste yank buffer" ],
+
+					[ "[,] annotation-mode"  , _ => { hvim.mmode = ANNOTATION; } ,  "Interactive stack mutation annotation (doesn't bite!)" ],
+
+					[ "[u]ndo"               , _ => {} ,   "Undo changes" ],
+					[ "[r]edo"               , _ => {} ,   "Redo changes" ],
+
+					"CARET1",
+				]);
+			} else if (hvim.mmode === EDIT) {
 				ed.setAttribute("contenteditable", "true");
-				add_class(root, "ed_border_edit");
-				remove_class(root, "ed_border_cmd");
-				mode.innerHTML = "EDIT";
-				mode.setAttribute("title", "Edit Mode");
+				install_keybinds([
+					[ "[Esc] exit-to-command-mode",    _ => { hvim.mmode = COMMAND; }, "Go back to Command Mode" ],
+					"CARET0",
+				]);
+			} else if (hvim.mmode === ANNOTATION) {
+				ed.setAttribute("contenteditable", "false");
+				install_keybinds([
+					[ "[Esc] abort"   , _ => { hvim.mmode = COMMAND; } ,   "Abort annotation; go back to Command Mode" ],
+				]);
+			} else {
+				throw new Error("unhandled mode");
 			}
 			mode.style.color = getComputedStyle(root).borderColor;
 		}
-	}
-
-	function hvim_toggle_mode() {
-		hvim_mode = (hvim_mode+1)%2;
-		refresh();
-		ed.focus();
 	}
 
 	function init_editor() {
@@ -80,7 +199,7 @@ window.onload = () => {
 		}
 
 		function select_index(i) {
-			ed.innerText = prg.files[i][1];
+			ed.innerHTML = escape_html(prg.files[i][1]);
 		}
 
 		sel.addEventListener("change", (ev) => {
@@ -90,32 +209,33 @@ window.onload = () => {
 
 		ed.focus();
 
-		ed.addEventListener('keydown', (ev) => {
-			const w = ev.which;
-			if (w === CC("\t")) {
-				ev.preventDefault();
-			} else if (w === CC("\r")) {
-				console.log("ENTER");
-			} else if (w === 27) {
-				//hvim_toggle_mode();
-				//console.log("ESC");
-				//ev.preventDefault();
-			} else if (37 <= w && w <= 40) {
-				//  37 arrow left
-				//  38 up
-				//  39 right
-				//  40 down
-				console.log("ed arrow" + w);
-			}
-			//console.log(ev.which);
+		const toplvl_keys = {"Escape":true};
 
+		const no_modifiers = (ev) => !ev.ctrlKey && !ev.metaKey; // probably a bad idea to add shiftKey/altKey?
+
+		ed.addEventListener('keydown', (ev) => {
+			const c = ev.code;
+			if (!toplvl_keys[c]) {
+				const b = keybind_table[c];
+				if (no_modifiers(ev) && b) {
+					b();
+					refresh();
+					ed.focus();
+					ev.preventDefault();
+				}
+			}
 		});
 
 		window.addEventListener("keydown", (ev) => {
-			const w = ev.which;
-			if (w === 27) {
-				hvim_toggle_mode();
-				ev.preventDefault();
+			const c = ev.code;
+			if (toplvl_keys[c]) {
+				const b = keybind_table[c];
+				if (no_modifiers(ev) && b) {
+					b();
+					refresh();
+					ed.focus();
+					ev.preventDefault();
+				}
 			}
 		});
 
