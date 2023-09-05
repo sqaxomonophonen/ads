@@ -119,10 +119,8 @@
 ;
 
 : test_inline_words
-   0 assert ( XXX not reached )
    :=inline_mul10 10 * ;
    42 inline_mul10   420 = assert
-   0 assert ( XXX not reached )
 ;
 
 : test_recursion

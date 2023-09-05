@@ -428,7 +428,7 @@ function new_compiler(read_file_fn) {
 					const maybe_inline = () => {
 						if (op_was_inlined) throw new Error("XXX 2+ inlines?");
 						if (inline_ops) {
-							inline_ops.push(op);
+							inline_ops.push([op, word.oppos[opi]]);
 						}
 						op_was_inlined = true;
 					};
@@ -448,8 +448,7 @@ function new_compiler(read_file_fn) {
 					const ii = op[0], name = op[1][1];
 					let found = false;
 					for (let i0 = word_stack.length-1; i0 >= 0 && !found; i0--) {
-						const w0 = word_stack[i0];
-						const w0s = w0.subwords || [];
+						const w0s = word_stack[i0].subwords || [];
 						for (let i1 = 0; i1 < w0s.length && !found; i1++) {
 							const w1 = w0s[i1];
 							if (w1.name === name) {
@@ -468,15 +467,20 @@ function new_compiler(read_file_fn) {
 										uplift_word([...word_stack.slice(0, i0+1), w2]);
 									}
 								} else if (ii === call_ii) {
+									let pass_inline_ops = inline_ops;
 									if (w1.is_inline_word) {
-										if (!inline_ops) inline_ops = [];
+										if (!pass_inline_ops) pass_inline_ops = [];
 									} else {
 										maybe_inline();
-										inline_ops = undefined;
+										pass_inline_ops = undefined;
 									}
-									uplift_word([...word_stack.slice(0, i0+1), w1], inline_ops);
+									uplift_word([...word_stack.slice(0, i0+1), w1], pass_inline_ops);
 									if (w1.is_inline_word) {
-										word.ops[opi] = [FLATTEN_INLINE, inline_ops];
+										word.ops[opi] = [
+											FLATTEN_INLINE,
+											pass_inline_ops.map(x=>x[0]),
+											pass_inline_ops.map(x=>x[1])
+										];
 									}
 								} else {
 									throw new Error("UNREACHABLE");
@@ -512,8 +516,8 @@ function new_compiler(read_file_fn) {
 				for (let opi = 0; opi < word.ops.length; opi++) {
 					let op = word.ops[opi];
 					if (op[0] === FLATTEN_INLINE) {
-						word.ops = word.ops.slice(0, opi).concat(op[1]).concat(word.ops.slice(opi+1));
-						throw new Error("XXX also handle word.oppos");
+						word.ops   = word.ops.slice(0, opi).concat(op[1]).concat(word.ops.slice(opi+1));
+						word.oppos = word.oppos.slice(0, opi).concat(op[2]).concat(word.oppos.slice(opi+1));
 						opi--;
 						continue;
 					}
