@@ -114,9 +114,7 @@ function new_compiler(resolve_file) {
 	const WHITESPACE = " \t\n\r";
 
 	function open(file) {
-		let file_stack = [];
-		let cursor_mark, mark_pos;
-		let top;
+		let file_stack = [], cursor_mark, mark_pos, top;
 
 		function set_top() { top = file_stack[file_stack.length-1]; };
 
@@ -143,13 +141,25 @@ function new_compiler(resolve_file) {
 
 		push_file(file);
 
-		function get() {
-			const ch = top.src[top.cursor++];
-			if (ch === "\n" && top.cursor > top.cursor_at_beginning_of_line) {
-				top.line++;
-				top.cursor_at_beginning_of_line = top.cursor;
-			}
-			return ch;
+		let disallowing_newlines_inside = null;
+		function disallow_newline_inside(context) {
+			disallowing_newlines_inside = context;
+		}
+		// disallow_newline_inside() is used to prevent "special
+		// tokenizer state" (comments and word definition header) from
+		// crossing line boundaries, so e.g. comments have to begin and
+		// end on the same line. The inspiration comes from ziglang
+		// which generally allows individual lines to be tokenized out
+		// of context. It's not much of an inconvenience for the
+		// programmer, but makes source reflection (like syntax
+		// highlighting) much easier. I also suspect language designers
+		// commonly curse at editor designers because syntax
+		// highlighting constantly breaks, not realizing (or wanting to
+		// realize) that it's a hard problem to solve in the editor
+		// code, and an easy one to solve in the language. /rant
+
+		function allow_newline() {
+			disallowing_newlines_inside = null;
 		}
 
 		const get_pos_array = () => [top.filename, top.line, (top.cursor - top.cursor_at_beginning_of_line + 1)];
@@ -157,8 +167,22 @@ function new_compiler(resolve_file) {
 			const ps = get_pos_array();
 			return "file " + ps[0] + ", line " + ps[1] + ", column " + ps[2];
 		};
+
 		function warn(msg) { console.warn("WARNING at " + get_pos() + ": " + msg); };
 		function error(msg) { throw new Error("at " + get_pos() + ": " + msg); };
+
+		function get() {
+			const ch = top.src[top.cursor++];
+			if (ch === "\n" && top.cursor > top.cursor_at_beginning_of_line) {
+				if (disallowing_newlines_inside !== null) {
+					error("newline is not allowed inside " + disallowing_newlines_inside);
+				}
+				top.line++;
+				top.cursor_at_beginning_of_line = top.cursor;
+			}
+			return ch;
+		}
+
 		const get_lines = () => top.src.split("\n")
 		function mark() {
 			cursor_mark = top.cursor;
@@ -185,7 +209,13 @@ function new_compiler(resolve_file) {
 			while (!one_of(get(), chars)) {};
 		}
 
-		return { get_mark_pos, push_file, push_src, pop_file, get, get_lines, mark, eat_while_match, skip_whitespace, skip_until_match_one_of, error, warn };
+		return {
+			push_file, push_src, pop_file,
+			get_mark_pos, get, get_lines, mark,
+			eat_while_match, skip_whitespace, skip_until_match_one_of,
+			error, warn,
+			disallow_newline_inside, allow_newline
+		};
 	}
 
 	const is_test_word = word => word.startsWith("test_");
@@ -283,6 +313,7 @@ function new_compiler(resolve_file) {
 					comment_depth++;
 				} else if (ch == ")") {
 					comment_depth--;
+					if (comment_depth === 0) src.allow_newline();
 				}
 				continue;
 			}
@@ -300,11 +331,12 @@ function new_compiler(resolve_file) {
 					src.error("unhandled directive: " + directive);
 
 				}
-			} else if (ch === "`") { // push word index
+			} else if (ch === "\\") { // push word index
 				src.mark();
 				const word = src.eat_while_match(["az","09","_"]);
 				push_token(PUSH_NUMBER_IMM_INDEX_OF_WORD, word, lang_number_vm_op);
 			} else if /*word*/ (match(ch, ["az","AZ","_"])) {
+				if (defword_state > 0) src.allow_newline();
 				const word = src.eat_while_match(["az","AZ","09","_"]);
 				const builtin_vm_op = lang_builtin_word_to_vm_op_map[word];
 				if (builtin_vm_op) {
@@ -319,6 +351,7 @@ function new_compiler(resolve_file) {
 				if (defword_state === 0) {
 					word = new_word();
 					word_stack.push(word);
+					src.disallow_newline_inside("word definition header (\":<word>\")");
 				}
 				defword_state++;
 				if (!(1 <= defword_state && defword_state <= 2)) src.error("only : and :: allowed");
@@ -329,6 +362,7 @@ function new_compiler(resolve_file) {
 			} else if (lang_one_char_to_vm_op_map[ch]) {
 				push_token(ONE_CHAR_OP, ch, lang_one_char_to_vm_op_map[ch]);
 			} else if /*comment*/ (ch === "(") {
+				src.disallow_newline_inside("comments");
 				comment_depth++;
 			} else {
 				src.error("unexpected character");

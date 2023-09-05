@@ -96,12 +96,12 @@
 
 : test_word_tables
 
-   ( a sequence of double-colon words are considered to be a "word table" if
-   one or more of the words are referenced by the "push word index" backtick
-   "`" operator. in that case you're guaranteed to be able to do "word index
-   arithmetic" within the word table boundaries, whereas other word indices may
-   be rearranged by the compiler. this test only calls "api_three", but
-   indirectly a couple of times )
+   ( a sequence of double-colon words are considered to be a "word table" if )
+   ( one or more of the words are referenced by the "push word index" or )
+   ( backslash or "\" operator. in that case you're guaranteed to be able to do )
+   ( "word index arithmetic" within the word table boundaries, whereas other word )
+   ( indices may be rearranged by the compiler. this test only calls "api_three", )
+   ( but indirectly a couple of times )
 
    :: api_one   0 assert    ;
    :: api_two   0 assert    ;
@@ -112,10 +112,10 @@
 
    api_three            42 = assert
    api_three            42 = assert
-   `api_three call      42 = assert
-   `api_two 1 + call    42 = assert
-   `api_one 2 + call    42 = assert
-   `api_four 1 - call   42 = assert
+   \api_three call      42 = assert
+   \api_two 1 + call    42 = assert
+   \api_one 2 + call    42 = assert
+   \api_four 1 - call   42 = assert
 ;
 
 : test_recursion
@@ -222,8 +222,8 @@
 ;
 
 : test_globals
-   ( getglobal / setglobal allows storing values at global indices for later
-   retrival )
+   ( getglobal / setglobal allows storing values at global indices for later )
+   ( retrival )
    : KEY1 12 ;
    : KEY2 23 ;
    : KEY3 34 ;
@@ -250,8 +250,8 @@
 ;
 
 : test_brk
-   ( the VM can be stoped with brk/breakpoints and can be re-entered, which the
-   test-runner does; the program should not see any difference )
+   ( the VM can be stoped with brk/breakpoints and can be re-entered, which the )
+   ( test-runner does; the program should not see any difference )
 
    : brk_deep ( n-deep rstack when "brk" fires )
       dup 0 gt if
