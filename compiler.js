@@ -668,6 +668,9 @@ function new_compiler(read_file_fn) {
 				vm = eval(vm_src);
 			}
 
+			if (vm_words.length !== dbg_words.length) throw new Error("vm/dbg mismatch");
+			for (let i = 0; i < vm_words.length; i++) if (vm_words[i].length !== dbg_words[i].length) throw new Error("vm/dbg mismatch");
+
 			return {
 				vm,
 				vm_words,
