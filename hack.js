@@ -146,8 +146,15 @@ window.onload = () => {
 		const selection = window.getSelection();
 		if (selection.rangeCount < 1) return [0,0];
 		const range = selection.getRangeAt(0);
-		const span = (start ? range.startContainer : range.endContainer).parentNode;
-		if (span.tagName !== "SPAN") return [0,0];
+		const c0 = (start ? range.startContainer : range.endContainer);
+		let span = c0.parentNode;
+		if (span.tagName !== "SPAN") {
+			if (c0.tagName === "SPAN") {
+				span = c0;
+			} else {
+				return [0,0];
+			}
+		}
 		const p0 = span.getAttribute("data-p0");
 		if (!p0) return [0,0];
 		const [ line, col0 ] = p0.split(",").map(x=>parseInt(x,10))
@@ -285,12 +292,7 @@ window.onload = () => {
 					cur = c1;
 				}
 
-				// we need some voodoo for empty lines; &#x200B
-				// is a zero-width space that causes the
-				// div/span to "materialize". another
-				// possibility is <span><br/></span> but then
-				// caret position detection completely fails
-				if (line.length === 0) hl += "<span data-p0=\""+line_number+",-1\">&#x200B</span>";
+				if (line.length === 0) hl += "<span data-p0=\""+line_number+",-1\"><br/></span>";
 
 				hl += "</div>";
 				html_lines.push(hl);
