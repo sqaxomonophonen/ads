@@ -59,10 +59,10 @@ http.createServer((req, res) => {
 	};
 
 	const SRC_FILES = [
-		"hack.4st",
-		"lib.4st",
-		"main.4st",
 		"selftest.4st",
+		"lib.4st",
+		"hack.4st",
+		"main.4st",
 	];
 
 	const serve_static = (name) => {

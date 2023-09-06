@@ -2,6 +2,20 @@
 window.onload = () => {
 	const IS_OFFLINE = window.location.href.split(":")[0] === "file";
 
+	const clamp = (x,min,max) => Math.max(min, Math.min(max, x));
+
+	const prefs = (() => {
+		const KEY = "hack137_prefs";
+		const get_obj = _ => JSON.parse(window.localStorage.getItem(KEY) || "{}");
+		const get = key => get_obj()[key];
+		function set(key, value) {
+			let o = get_obj();
+			o[key] = value;
+			window.localStorage.setItem(KEY, JSON.stringify(o));
+		}
+		return { get, set };
+	})();
+
 	const CC = s=>s.charCodeAt(0);
 	const $ = s => {
 		const [ c0, c1 ] = [ s[0], s.slice(-1) ];
@@ -62,7 +76,6 @@ window.onload = () => {
 	WORD="WORD", LINE="LINE"
 	;
 	let hvim = {
-		lines: [],
 		mmode: COMMAND,
 		tmode: WORD,
 	};
@@ -127,6 +140,32 @@ window.onload = () => {
 		}
 	}
 
+	let caret_range = [[0,0],[0,0]];
+
+	function get_caret_position(start) {
+		const selection = window.getSelection();
+		if (selection.rangeCount < 1) return [0,0];
+		const range = selection.getRangeAt(0);
+		const span = (start ? range.startContainer : range.endContainer).parentNode;
+		if (span.tagName !== "SPAN") return [0,0];
+		const p0 = span.getAttribute("data-p0");
+		if (!p0) return [0,0];
+		const [ line, col0 ] = p0.split(",").map(x=>parseInt(x,10))
+		const column = col0 + (start ? range.startOffset : range.endOffset);
+		return [line, Math.max(0,column)];
+	}
+
+	function light_refresh() {
+		caret_range = [get_caret_position(true), get_caret_position(false)];
+
+		const fmt_caret = (pos) => (1+pos[0]) + "," + (1+pos[1]);
+		if (caret_range[0][0] !== caret_range[1][0] || caret_range[0][1] !== caret_range[1][1]) {
+			$("#ed_info").innerHTML = fmt_caret(caret_range[0])+"-"+fmt_caret(caret_range[1]);
+		} else {
+			$("#ed_info").innerHTML = fmt_caret(caret_range[0]);
+		}
+	}
+
 	function refresh() {
 		const root = $("#ed_root");
 		const mode = $("#ed_mode");
@@ -147,6 +186,8 @@ window.onload = () => {
 				}
 			}
 		}
+
+		light_refresh();
 
 		if (hvim.mmode === COMMAND) {
 			ed.setAttribute("contenteditable", "false");
@@ -214,15 +255,23 @@ window.onload = () => {
 			const code = edit_files[i][1];
 			const lines = code.split("\n");
 			const html_lines = [];
-			for (const line of lines) {
+			for (let line_number = 0; line_number < lines.length; line_number++) {
+				const line = lines[line_number];
 				const tokens = compiler.tokenize_line(line);
 
 				let hl = "<div>";
 
-				const add_ws = (n) => {
+				let column = 0;
+
+				function push_span(typ, body) {
+					hl += "<span data-p0=\""+line_number+","+column+"\" class=\"syn-"+typ+"\">"+escape_html(body)+"</span>";
+					column += body.length;
+				};
+
+				function add_ws(n) {
 					let ws = "";
 					while (ws.length < n) ws += " ";
-					hl += "<span class=\"syn-ws\">"+ws+"</span>";
+					push_span("whitespace", ws);
 				};
 
 				let cur = 0;
@@ -232,11 +281,16 @@ window.onload = () => {
 						add_ws(c0-cur);
 						cur = c0;
 					}
-					hl += "<span class=\"syn-" + typ + "\">" + escape_html(line.slice(c0, c1)) + "</span>";
+					push_span(typ, line.slice(c0, c1));
 					cur = c1;
 				}
 
-				if (line.trim().length === 0) hl += "<br/>";
+				// we need some voodoo for empty lines; &#x200B
+				// is a zero-width space that causes the
+				// div/span to "materialize". another
+				// possibility is <span><br/></span> but then
+				// caret position detection completely fails
+				if (line.length === 0) hl += "<span data-p0=\""+line_number+",-1\">&#x200B</span>";
 
 				hl += "</div>";
 				html_lines.push(hl);
@@ -251,35 +305,25 @@ window.onload = () => {
 
 		ed.focus();
 
-		const toplvl_keys = {"Escape":true};
-
+		const toplvl_keys = {"Escape":1};
 		const no_modifiers = (ev) => !ev.ctrlKey && !ev.metaKey; // probably a bad idea to add shiftKey/altKey?
-
-		ed.addEventListener('keydown', (ev) => {
+		function on_keydown(is_toplvl, ev) {
 			const c = ev.code;
-			if (!toplvl_keys[c]) {
-				const b = keybind_table[c];
-				if (no_modifiers(ev) && b) {
-					b();
+			if (is_toplvl === !!toplvl_keys[c]) {
+				const handler = keybind_table[c];
+				if (handler && no_modifiers(ev)) {
+					handler();
 					refresh();
 					ed.focus();
 					ev.preventDefault();
 				}
 			}
+		}
+		ed.addEventListener('keydown', (ev) => on_keydown(false, ev));
+		ed.addEventListener('keyup', (ev) => {
+			light_refresh();
 		});
-
-		window.addEventListener("keydown", (ev) => {
-			const c = ev.code;
-			if (toplvl_keys[c]) {
-				const b = keybind_table[c];
-				if (no_modifiers(ev) && b) {
-					b();
-					refresh();
-					ed.focus();
-					ev.preventDefault();
-				}
-			}
-		});
+		window.addEventListener("keydown", (ev) => on_keydown(true, ev));
 
 		refresh();
 	}
@@ -303,6 +347,12 @@ window.onload = () => {
 		const pane_resize = $("#pane_resize");
 		const pane_left = $("#pane_left");
 		const body = document.body;
+
+		let pane_pct = prefs.get("pane_pct");
+		if (typeof pane_pct !== "number") pane_pct = 38;
+		pane_pct = clamp(pane_pct, 5, 95);
+		pane_left.style.flexBasis = pane_pct+"%";
+
 		function end(ev) {
 			is_resizing = false;
 			body.removeEventListener('mouseup', end);
@@ -312,6 +362,7 @@ window.onload = () => {
 		function move(ev) {
 			if (is_resizing) {
 				pane_left.style.flexBasis = ev.clientX + "px";
+				prefs.set("pane_pct", Math.round(ev.clientX*100/window.innerWidth));
 				ev.preventDefault();
 			} else {
 				end(ev);
