@@ -15,6 +15,15 @@ window.onload = () => {
 
 	const escape_html = (s) => s.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#039;');
 
+	const fs = (() => {
+		let store = {};
+		return {
+			set_store: (new_store) => { store = new_store; },
+			read_file: (filename) => store[filename],
+		};
+	})();
+	const compiler = new_compiler(fs.read_file);
+
 	function class_set(em) {
 		let classes = (em.getAttribute("class")||"").split(" ").filter(x => x.length);
 		let refresh = () => em.setAttribute("class", classes.join(" " ));
@@ -49,9 +58,11 @@ window.onload = () => {
 	let prg;
 
 	let hvim_mode = 0;
-	const COMMAND = 101, EDIT = 102, ANNOTATION = 103;
-	const WORD = 201, LINE = 202;
+	const COMMAND="COMMAND", EDIT="EDIT", ANNOTATION="ANNOTATION",
+	WORD="WORD", LINE="LINE"
+	;
 	let hvim = {
+		lines: [],
 		mmode: COMMAND,
 		tmode: WORD,
 	};
@@ -117,89 +128,118 @@ window.onload = () => {
 	}
 
 	function refresh() {
-		{
-			const root = $("#ed_root");
-			const mode = $("#ed_mode");
+		const root = $("#ed_root");
+		const mode = $("#ed_mode");
 
-			{
-				const common_stuff = [
-					[ COMMAND    , "ed_border_cmd"        , "COMMAND"    , "Command Mode (keys execute commands; see keybinds)" ],
-					[ EDIT       , "ed_border_edit"       , "EDIT"       , "Edit Mode (functions like a normal text editor"     ],
-					[ ANNOTATION , "ed_border_annotation" , "ANNOTATION" , "Annotation Mode (let keybinds guide you)"           ],
-				];
-				for (const [id,cls,label,title] of common_stuff) {
-					if (hvim.mmode === id) {
-						mode.innerHTML = label;
-						mode.setAttribute("title", title);
-						add_class(root, cls);
-					} else {
-						remove_class(root, cls);
-					}
+		{
+			const common_stuff = [
+				[ COMMAND    , "ed_border_cmd"        , "COMMAND"    , "Command Mode (keys execute commands; see keybinds)" ],
+				[ EDIT       , "ed_border_edit"       , "EDIT"       , "Edit Mode (functions like a normal text editor"     ],
+				[ ANNOTATION , "ed_border_annotation" , "ANNOTATION" , "Annotation Mode (let keybinds guide you)"           ],
+			];
+			for (const [id,cls,label,title] of common_stuff) {
+				if (hvim.mmode === id) {
+					mode.innerHTML = label;
+					mode.setAttribute("title", title);
+					add_class(root, cls);
+				} else {
+					remove_class(root, cls);
 				}
 			}
-
-			if (hvim.mmode === COMMAND) {
-				ed.setAttribute("contenteditable", "false");
-				install_keybinds([
-					[ "[Esc/i]nsert"   , _ => { hvim.mmode = EDIT; } ,   "Enter insert mode at beginning of word" ],
-					[ "[e]nd-insert"   , _ => { hvim.mmode = EDIT; } ,   "Enter insert mode at end of word" ],
-					[ "[a]ppend"       , _ => { hvim.mmode = EDIT; } ,   "Enter insert mode at beginning of next word" ],
-
-					hvim.tmode === WORD ? [ "[q] line-mode",   _ => { hvim.tmode = LINE; }, "Enter insert mode at beginning of next word" ] :
-					hvim.tmode === LINE ? [ "[q] word-mode",   _ => { hvim.tmode = WORD; }, "Enter insert mode at beginning of next word" ] :
-					UNREACHABLE(),
-
-					"NUM",
-
-					hvim.tmode === WORD ? [ "[c]hange-word",   _ => {}, "" ] :
-					hvim.tmode === LINE ? [ "[c]hange-line",   _ => {}, "" ] :
-					UNREACHABLE(),
-
-					hvim.tmode === WORD ? [ "[d]elete-word",   _ => {}, "" ] :
-					hvim.tmode === LINE ? [ "[d]elete-line",   _ => {}, "" ] :
-					UNREACHABLE(),
-
-					hvim.tmode === WORD ? [ "[y]ank-word",   _ => {}, "" ] :
-					hvim.tmode === LINE ? [ "[y]ank-line",   _ => {}, "" ] :
-					UNREACHABLE(),
-
-					[ "[p]aste"              , _ => {} ,   "Paste yank buffer" ],
-
-					[ "[,] annotation-mode"  , _ => { hvim.mmode = ANNOTATION; } ,  "Interactive stack mutation annotation (doesn't bite!)" ],
-
-					[ "[u]ndo"               , _ => {} ,   "Undo changes" ],
-					[ "[r]edo"               , _ => {} ,   "Redo changes" ],
-
-					"CARET1",
-				]);
-			} else if (hvim.mmode === EDIT) {
-				ed.setAttribute("contenteditable", "true");
-				install_keybinds([
-					[ "[Esc] exit-to-command-mode",    _ => { hvim.mmode = COMMAND; }, "Go back to Command Mode" ],
-					"CARET0",
-				]);
-			} else if (hvim.mmode === ANNOTATION) {
-				ed.setAttribute("contenteditable", "false");
-				install_keybinds([
-					[ "[Esc] abort"   , _ => { hvim.mmode = COMMAND; } ,   "Abort annotation; go back to Command Mode" ],
-				]);
-			} else {
-				throw new Error("unhandled mode");
-			}
-			mode.style.color = getComputedStyle(root).borderColor;
 		}
+
+		if (hvim.mmode === COMMAND) {
+			ed.setAttribute("contenteditable", "false");
+			install_keybinds([
+				[ "[Esc/i]nsert"  , _ => { hvim.mmode = EDIT; } ,   "Enter insert mode at beginning of word" ],
+				[ "[e]nd-insert"  , _ => { hvim.mmode = EDIT; } ,   "Enter insert mode at end of word" ],
+				[ "[a]ppend"      , _ => { hvim.mmode = EDIT; } ,   "Enter insert mode at beginning of next word" ],
+
+				hvim.tmode === WORD ? [ "[q] line-mode",   _ => { hvim.tmode = LINE; }, "Enter insert mode at beginning of next word" ] :
+				hvim.tmode === LINE ? [ "[q] word-mode",   _ => { hvim.tmode = WORD; }, "Enter insert mode at beginning of next word" ] :
+				UNREACHABLE(),
+
+				"NUM",
+
+				hvim.tmode === WORD ? [ "[c]hange-word",   _ => {}, "" ] :
+				hvim.tmode === LINE ? [ "[c]hange-line",   _ => {}, "" ] :
+				UNREACHABLE(),
+
+				hvim.tmode === WORD ? [ "[d]elete-word",   _ => {}, "" ] :
+				hvim.tmode === LINE ? [ "[d]elete-line",   _ => {}, "" ] :
+				UNREACHABLE(),
+
+				hvim.tmode === WORD ? [ "[y]ank-word",   _ => {}, "" ] :
+				hvim.tmode === LINE ? [ "[y]ank-line",   _ => {}, "" ] :
+				UNREACHABLE(),
+
+				[ "[p]aste"              , _ => {} ,   "Paste yank buffer" ],
+
+				[ "[,] annotation-mode"  , _ => { hvim.mmode = ANNOTATION; } ,  "Interactive stack mutation annotation (doesn't bite!)" ],
+
+				[ "[u]ndo"               , _ => {} ,   "Undo changes" ],
+				[ "[r]edo"               , _ => {} ,   "Redo changes" ],
+
+				"CARET1",
+			]);
+		} else if (hvim.mmode === EDIT) {
+			ed.setAttribute("contenteditable", "true");
+			install_keybinds([
+				[ "[Esc] command-mode",    _ => { hvim.mmode = COMMAND; }, "Go back to Command Mode" ],
+				"CARET0",
+			]);
+		} else if (hvim.mmode === ANNOTATION) {
+			ed.setAttribute("contenteditable", "false");
+			install_keybinds([
+				[ "[Esc] abort"   , _ => { hvim.mmode = COMMAND; } ,   "Abort annotation; go back to Command Mode" ],
+			]);
+		} else {
+			throw new Error("unhandled mode");
+		}
+		mode.style.color = getComputedStyle(root).borderColor;
 	}
 
 	function init_editor() {
 		const sel = $("#ed_select_file");
+		let edit_files = [];
 		for (let [ name, code ] of prg.files) {
+			if (!name.endsWith(".4st")) continue;
+			edit_files.push([name, code]);
 			const opt = $("<option>");
 			opt.innerHTML = name;
 			sel.appendChild(opt);
 		}
 
 		function select_index(i) {
-			ed.innerHTML = prg.files[i][1].split("\n").map(line => "<div>" + escape_html(line) + "</div>").join("");
+			const code = edit_files[i][1];
+			const lines = code.split("\n");
+			const html_lines = [];
+			for (const line of lines) {
+				const tokens = compiler.tokenize_line(line);
+
+				let hl = "<div>";
+
+				const add_ws = (n) => {
+					let ws = "";
+					while (ws.length < n) ws += " ";
+					hl += "<span class=\"syn-ws\">"+ws+"</span>";
+				};
+
+				let cur = 0;
+				for (const [ pos, typ ] of tokens) {
+					const [ c0, c1 ] = pos.slice(2);
+					if (c0 > cur) {
+						add_ws(c0-cur);
+						cur = c0;
+					}
+					hl += "<span class=\"syn-" + typ + "\">" + escape_html(line.slice(c0, c1)) + "</span>";
+					cur = c1;
+				}
+
+				hl += "</div>";
+				html_lines.push(hl);
+			}
+			ed.innerHTML = html_lines.join("");
 		}
 
 		sel.addEventListener("change", (ev) => {

@@ -51,6 +51,7 @@ body {
 	margin: 0;
 	overflow: auto;
 	overflow-y: scroll;
+	white-space: pre;
 }
 
 #ed::-webkit-scrollbar {
@@ -156,10 +157,63 @@ keybinds {
 	display: inline;
 }
 
+.syn-ws {
+}
+
+.syn-BEGIN_WORD, .syn-END_WORD {
+	color: #55F;
+	font-weight: bold;
+}
+
+.syn-BEGIN_TABLE_WORD {
+	color: #A3F;
+	font-weight: bold;
+}
+
+.syn-BEGIN_INLINE_WORD {
+	color: #F75;
+	font-weight: bold;
+}
+
+.syn-NUMBER {
+	color: #0F0;
+}
+
+.syn-BUILTIN_WORD {
+	color: #7FF;
+	font-weight: bold;
+}
+
+.syn-USER_WORD {
+	color: #7CF;
+}
+
+.syn-WORD_INDEX {
+	color: #FBA;
+}
+
+.syn-COMMENT {
+	color: #A85;
+	font-style: italic;
+}
+
+.syn-OP {
+	color: #ff0;
+	font-weight: bold;
+}
+
+.syn-DIRECTIVE {
+	color: #f0f;
+	font-weight: bold;
+}
+
 </style>
+
 <script src="hack.js"></script>
 <script src="compiler.js"></script>
+
 </head>
+
 <body>
 
 <div id="pane_root">

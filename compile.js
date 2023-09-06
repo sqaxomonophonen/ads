@@ -43,6 +43,7 @@ TIME("4st test", () => {
 
 		const test_prg = o.trace_program((depth,name) => compiler.is_test_word(name));
 		//console.log(JSON.stringify(test_prg));
+
 		for (const word_index of test_prg.export_word_indices) {
 			const word_name = test_prg.export_word_names[word_index];
 			try {
