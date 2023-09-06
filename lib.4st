@@ -14,11 +14,11 @@
 ;
 
 
-: EXPR_CONST 0 ;
-: EXPR_INPUT 1 ;
-: EXPR_WORK  2 ;
-: EXPR_DELAY 3 ;
-: EXPR_CURVE 4 ;
+:=EXPR_CONST 0 ;
+:=EXPR_INPUT 1 ;
+:=EXPR_WORK  2 ;
+:=EXPR_DELAY 3 ;
+:=EXPR_CURVE 4 ;
 
 : newgraph
    arrnew
