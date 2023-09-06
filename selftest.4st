@@ -15,7 +15,8 @@
    1024 log2  10 = assert
    420 neg abs 420 = assert
 
-   ( "55 1 neg e10" means "55e-1" or "5.5"; the language intentionally has only non-negative integer literals )
+   ( "55 1 neg e10" means "55e-1" or "5.5"; the language intentionally has only )
+   ( non-negative integer literals )
    55 1 neg e10   floor   5 = assert
    55 1 neg e10   ceil    6 = assert
    54 1 neg e10   round   5 = assert
