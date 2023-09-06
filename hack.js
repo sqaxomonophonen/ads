@@ -236,6 +236,8 @@ window.onload = () => {
 					cur = c1;
 				}
 
+				if (line.trim().length === 0) hl += "<br/>";
+
 				hl += "</div>";
 				html_lines.push(hl);
 			}
