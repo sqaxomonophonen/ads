@@ -45,13 +45,13 @@ body {
 
 #ed {
 	flex: 1 1 auto;
-	font-size: 18px;
+	font-size: 1.2em;
 	outline: none;
 	padding-left: 1.5em;
 	margin: 0;
-	overflow: auto;
-	overflow-y: scroll;
-	white-space: pre;
+	overflow-x: auto;
+	overflow-y: auto;
+	white-space: pre-wrap;
 }
 
 #ed::-webkit-scrollbar {
@@ -77,11 +77,6 @@ body {
 	border-color: #a0f;
 }
 
-#ed .code_line {
-	position: relative;
-	white-space: pre-wrap;
-}
-
 #pane_root {
 	display: flex;
 	width: 100%;
@@ -93,15 +88,12 @@ body {
 #pane_left {
 	display: flex;
 	width: 100%;
-	flex-grow: 1;
-	flex-shrink: 0;
-	overflow-y: hidden;
+	flex: 1 0;
 }
 
 #pane_resize {
 	display: flex;
-	flex-grow: 0;
-	flex-shrink: 0;
+	flex: 0 0;
 	background: #002;
 	border-left: 1px dotted white;
 	border-right: 1px dotted white;
@@ -115,7 +107,6 @@ body {
 	width: 100%;
 	flex-grow: 0;
 	flex-shrink: 1;
-	overflow-x: auto;
 }
 
 keybind {

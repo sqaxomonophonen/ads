@@ -163,13 +163,16 @@ window.onload = () => {
 	}
 
 	function light_refresh() {
-		caret_range = [get_caret_position(true), get_caret_position(false)];
-
-		const fmt_caret = (pos) => (1+pos[0]) + "," + (1+pos[1]);
-		if (caret_range[0][0] !== caret_range[1][0] || caret_range[0][1] !== caret_range[1][1]) {
-			$("#ed_info").innerHTML = fmt_caret(caret_range[0])+"-"+fmt_caret(caret_range[1]);
+		if (hvim.mmode === EDIT) {
+			caret_range = [get_caret_position(true), get_caret_position(false)];
+			const fmt_caret = (pos) => (1+pos[0]) + "," + (1+pos[1]);
+			if (caret_range[0][0] !== caret_range[1][0] || caret_range[0][1] !== caret_range[1][1]) {
+				$("#ed_info").innerHTML = fmt_caret(caret_range[0])+"-"+fmt_caret(caret_range[1]);
+			} else {
+				$("#ed_info").innerHTML = fmt_caret(caret_range[0]);
+			}
 		} else {
-			$("#ed_info").innerHTML = fmt_caret(caret_range[0]);
+			$("#ed_info").innerHTML = "";
 		}
 	}
 
@@ -322,9 +325,8 @@ window.onload = () => {
 			}
 		}
 		ed.addEventListener('keydown', (ev) => on_keydown(false, ev));
-		ed.addEventListener('keyup', (ev) => {
-			light_refresh();
-		});
+		ed.addEventListener('keyup', light_refresh);
+		ed.addEventListener('click', light_refresh);
 		window.addEventListener("keydown", (ev) => on_keydown(true, ev));
 
 		refresh();
