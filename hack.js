@@ -29,6 +29,28 @@ window.onload = () => {
 
 	const escape_html = (s) => s.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#039;');
 
+	const DATA_P0 = "data-p0";
+	const get_p0 = em=>(em.getAttribute && em.getAttribute(DATA_P0));
+	function find_p0(em0) {
+		for (let em = em0; em && em.id !== "ed"; em = em.parentNode) {
+			let p0 = get_p0(em);
+			if (p0) return p0;
+		}
+		function find_rec(em) {
+			if (!em) return null;
+			if (em.id === "ed") return null;
+			let p0 = get_p0(em);
+			if (p0) return p0;
+			if (!em.children) return null;
+			for (const c of em.children) {
+				p0 = find_rec(c);
+				if (p0) return p0;
+			}
+			return null;
+		}
+		return find_rec(em0);
+	}
+
 	const fs = (() => {
 		let store = {};
 		return {
@@ -140,6 +162,7 @@ window.onload = () => {
 		}
 	}
 
+	let mutation_observer = null;
 	let caret_range = [[0,0],[0,0]];
 
 	function get_caret_position(start) {
@@ -155,7 +178,7 @@ window.onload = () => {
 				return [0,0];
 			}
 		}
-		const p0 = span.getAttribute("data-p0");
+		const p0 = get_p0(span);
 		if (!p0) return [0,0];
 		const [ line, col0 ] = p0.split(",").map(x=>parseInt(x,10))
 		const column = col0 + (start ? range.startOffset : range.endOffset);
@@ -174,6 +197,10 @@ window.onload = () => {
 		} else {
 			$("#ed_info").innerHTML = "";
 		}
+	}
+
+	function on_selection_change() {
+		light_refresh();
 	}
 
 	function refresh() {
@@ -261,8 +288,8 @@ window.onload = () => {
 			sel.appendChild(opt);
 		}
 
-		function select_index(i) {
-			const code = edit_files[i][1];
+		function markup() {
+			const code = hvim.code;
 			const lines = code.split("\n");
 			const html_lines = [];
 			for (let line_number = 0; line_number < lines.length; line_number++) {
@@ -274,7 +301,7 @@ window.onload = () => {
 				let column = 0;
 
 				function push_span(typ, body) {
-					hl += "<span data-p0=\""+line_number+","+column+"\" class=\"syn-"+typ+"\">"+escape_html(body)+"</span>";
+					hl += "<span "+DATA_P0+"=\""+line_number+","+column+"\" class=\"syn-"+typ+"\">"+escape_html(body)+"</span>";
 					column += body.length;
 				};
 
@@ -295,12 +322,17 @@ window.onload = () => {
 					cur = c1;
 				}
 
-				if (line.length === 0) hl += "<span data-p0=\""+line_number+",-1\"><br/></span>";
+				if (line.length === 0) hl += "<span "+DATA_P0+"=\""+line_number+",-1\"><br/></span>";
 
 				hl += "</div>";
 				html_lines.push(hl);
 			}
 			ed.innerHTML = html_lines.join("");
+		}
+
+		function select_index(i) {
+			hvim.code = edit_files[i][1];
+			markup();
 		}
 
 		sel.addEventListener("change", (ev) => {
@@ -325,8 +357,45 @@ window.onload = () => {
 			}
 		}
 		ed.addEventListener('keydown', (ev) => on_keydown(false, ev));
-		ed.addEventListener('keyup', light_refresh);
-		ed.addEventListener('click', light_refresh);
+
+		let line_update_range;
+		document.addEventListener('selectionchange', on_selection_change);
+		mutation_observer = new MutationObserver((records) => {
+			line_update_range = null;
+			function eat_p0(p0) {
+				if (!p0) return;
+				let line = p0.split(",").map(x=>parseInt(x,10))[0]
+				if (line_update_range === null) {
+					line_update_range = [line, line];
+				} else {
+					line_update_range[0] = Math.min(line, line_update_range[0]);
+					line_update_range[1] = Math.max(line, line_update_range[1]);
+				}
+			}
+			for (const r of records) {
+				switch (r.type) {
+				case "childList": {
+					eat_p0(find_p0(r.target));
+					eat_p0(find_p0(r.previousSibling));
+					eat_p0(find_p0(r.nextSibling));
+					for (let r2 of r.removedNodes) eat_p0(find_p0(r2));
+					} break;
+				case "characterData":
+					eat_p0(find_p0(r.target));
+					break;
+				default:
+					console.log("SKIP:" + r.rype);
+					break;
+				}
+			}
+			console.log("TODO lines updated", line_update_range);
+		});
+		mutation_observer.observe(ed, {
+			subtree: true, // extend observation to entire subtree
+			childList: true, characterData: true, // receive these record types
+			//characterDataOldValue: true, // record contains old value too? probably useless?
+		});
+
 		window.addEventListener("keydown", (ev) => on_keydown(true, ev));
 
 		refresh();
