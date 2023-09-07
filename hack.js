@@ -30,7 +30,12 @@ window.onload = () => {
 	const escape_html = (s) => s.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#039;');
 
 	const DATA_P0 = "data-p0";
-	const get_p0 = em=>(em.getAttribute && em.getAttribute(DATA_P0));
+	function get_p0(em) {
+		if (!em.getAttribute) return null
+		let p0 = em.getAttribute(DATA_P0);
+		if (!p0) return null
+		return p0.split(",").map(x=>parseInt(x,10))
+	}
 	function find_p0(em0) {
 		for (let em = em0; em && em.id !== "ed"; em = em.parentNode) {
 			let p0 = get_p0(em);
@@ -163,36 +168,50 @@ window.onload = () => {
 	}
 
 	let mutation_observer = null;
-	let caret_range = [[0,0],[0,0]];
+	let selection_range = [[0,0],[0,0]];
 
-	function get_caret_position(start) {
+	function get_selection_range() {
 		const selection = window.getSelection();
 		if (selection.rangeCount < 1) return [0,0];
 		const range = selection.getRangeAt(0);
-		const c0 = (start ? range.startContainer : range.endContainer);
-		let span = c0.parentNode;
-		if (span.tagName !== "SPAN") {
-			if (c0.tagName === "SPAN") {
-				span = c0;
-			} else {
-				return [0,0];
+		let rr = [];
+		for (let i = 0; i < 2; i++) {
+			const c0 = (i ? range.startContainer : range.endContainer);
+			let span = c0.parentNode;
+			if (span.tagName !== "SPAN") {
+				if (c0.tagName === "SPAN") {
+					span = c0;
+				} else {
+					return [0,0];
+				}
 			}
+			const p0 = get_p0(span);
+			if (!p0) return [0,0];
+			const [ line, col0 ] = p0;
+			const column = col0 + (i ? range.startOffset : range.endOffset);
+			rr.push([line, Math.max(0,column)]);
 		}
-		const p0 = get_p0(span);
-		if (!p0) return [0,0];
-		const [ line, col0 ] = p0.split(",").map(x=>parseInt(x,10))
-		const column = col0 + (start ? range.startOffset : range.endOffset);
-		return [line, Math.max(0,column)];
+		return rr;
 	}
+
+	function set_selection_range(range) {
+		const ro = document.createRange();
+		// TODO
+		//ro.setEnd(node, offset)
+		//ro.setStart(node, offset)
+		const selection = window.getSelection();
+		selection.removeAllRanges();
+		//selectionaddRange(ro);
+	};
 
 	function light_refresh() {
 		if (hvim.mmode === EDIT) {
-			caret_range = [get_caret_position(true), get_caret_position(false)];
+			selection_range = get_selection_range();
 			const fmt_caret = (pos) => (1+pos[0]) + "," + (1+pos[1]);
-			if (caret_range[0][0] !== caret_range[1][0] || caret_range[0][1] !== caret_range[1][1]) {
-				$("#ed_info").innerHTML = fmt_caret(caret_range[0])+"-"+fmt_caret(caret_range[1]);
+			if (selection_range[0][0] !== selection_range[1][0] || selection_range[0][1] !== selection_range[1][1]) {
+				$("#ed_info").innerHTML = fmt_caret(selection_range[0])+"-"+fmt_caret(selection_range[1]);
 			} else {
-				$("#ed_info").innerHTML = fmt_caret(caret_range[0]);
+				$("#ed_info").innerHTML = fmt_caret(selection_range[0]);
 			}
 		} else {
 			$("#ed_info").innerHTML = "";
@@ -364,7 +383,7 @@ window.onload = () => {
 			line_update_range = null;
 			function eat_p0(p0) {
 				if (!p0) return;
-				let line = p0.split(",").map(x=>parseInt(x,10))[0]
+				let line = p0[0];
 				if (line_update_range === null) {
 					line_update_range = [line, line];
 				} else {
