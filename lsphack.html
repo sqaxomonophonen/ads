@@ -1,0 +1,40 @@
+<!doctype html>
+<html>
+<head>
+<title>&#x266A;&#x2665;&#x1F480;hACk&#x1F480;&#x2665;&#x266A;</title>
+<style>
+body {
+	background: black;
+	color: white;
+	margin: 0;
+	padding: 0;
+}
+</style>
+
+<script>
+window.onload = () => {
+	let seen_serial = 0;
+	function loop() {
+		fetch("poll", {
+			method: "POST",
+			body: JSON.stringify({
+				seen_serial,
+			}),
+		}).then(x => x.json().then(x => {
+			if (x) {
+				seen_serial = x.serial;
+				document.getElementById("cursor").innerText = JSON.stringify(x.cursor);
+			}
+			loop();
+		}));
+	}
+	loop();
+};
+</script>
+
+</head>
+
+<body>
+hello cursor <span id="cursor">...</span>
+</body>
+</html>

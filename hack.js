@@ -1,5 +1,8 @@
+// convention: internally line numbers and columns are zero-indexed, and only
+// one-indexed when present to the user
 
 window.onload = () => {
+
 	const IS_OFFLINE = window.location.href.split(":")[0] === "file";
 
 	const clamp = (x,min,max) => Math.max(min, Math.min(max, x));
@@ -17,44 +20,28 @@ window.onload = () => {
 	})();
 
 	const CC = s=>s.charCodeAt(0);
-	const $ = s => {
-		const [ c0, c1 ] = [ s[0], s.slice(-1) ];
-		return  c0 === "#"               ? document.getElementById(s.slice(1))            :
-		        c0 === "."               ? document.getElementsByClassName(s.slice(1))    :
-		        c0 === "<" && c1 === ">" ? document.createElement(s.slice(1,s.length-1))  :
-		                                   document.getElementByTagName(s);
-	};
+	const $ = q => document.querySelector(q);
+
+	function class_set(em) {
+		let classes = (em.getAttribute("class")||"").split(" ").filter(x => x.length);
+		const refresh = () => em.setAttribute("class", classes.join(" " ));
+		function has(c) { for (let i = 0; i < classes.length; i++) if (classes[i] === c) return true; }
+		function add(c) {
+			if (has(c)) return;
+			classes.push(c);
+			refresh();
+		}
+		function remove(c) {
+			if (!has(c)) return;
+			classes = classes.filter(x => x !== c);
+			refresh();
+		};
+		return { classes, has, add, remove };
+	}
 
 	const UNREACHABLE = m => { throw new Error("UNREACHABLE/"+m) };
 
 	const escape_html = (s) => s.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#039;');
-
-	const DATA_P0 = "data-p0";
-	function get_p0(em) {
-		if (!em.getAttribute) return null
-		let p0 = em.getAttribute(DATA_P0);
-		if (!p0) return null
-		return p0.split(",").map(x=>parseInt(x,10))
-	}
-	function find_p0(em0) {
-		for (let em = em0; em && em.id !== "ed"; em = em.parentNode) {
-			let p0 = get_p0(em);
-			if (p0) return p0;
-		}
-		function find_rec(em) {
-			if (!em) return null;
-			if (em.id === "ed") return null;
-			let p0 = get_p0(em);
-			if (p0) return p0;
-			if (!em.children) return null;
-			for (const c of em.children) {
-				p0 = find_rec(c);
-				if (p0) return p0;
-			}
-			return null;
-		}
-		return find_rec(em0);
-	}
 
 	const fs = (() => {
 		let store = {};
@@ -63,36 +50,8 @@ window.onload = () => {
 			read_file: (filename) => store[filename],
 		};
 	})();
+
 	const compiler = new_compiler(fs.read_file);
-
-	function class_set(em) {
-		let classes = (em.getAttribute("class")||"").split(" ").filter(x => x.length);
-		let refresh = () => em.setAttribute("class", classes.join(" " ));
-		let has = c => classes.filter(x=>x===c).length > 0;
-		let add = c => {
-			if (has(c)) return;
-			classes.push(c);
-			refresh();
-		};
-		let remove = c => {
-			if (!has(c)) return;
-			classes = classes.filter(x => x !== c);
-			refresh();
-		};
-		return { classes, has, add, remove };
-	}
-
-	const class_args = (args) => [class_set(args[0]), [...args].slice(1)];
-
-	function add_class() {
-		const [ set, classes ] = class_args(arguments);
-		for (const c of classes) set.add(c);
-	}
-
-	function remove_class() {
-		const [ set, classes ] = class_args(arguments);
-		for (const c of classes) set.remove(c);
-	}
 
 	const ed = $("#ed");
 
@@ -105,6 +64,8 @@ window.onload = () => {
 	let hvim = {
 		mmode: COMMAND,
 		tmode: WORD,
+		source: null,
+		lines: null,
 	};
 
 	let keybind_table = {};
@@ -140,11 +101,11 @@ window.onload = () => {
 					keybind_table[c] = fn;
 				}
 			}
-			const kb = $("<keybind>");
+			const kb = document.createElement("keybind");
 
 			const push_span = (txt) => {
 				if (txt.length === 0) return;
-				const e = $("<span>");
+				const e = document.createElement("span");
 				e.innerHTML = txt;
 				kb.appendChild(e);
 			};
@@ -154,7 +115,7 @@ window.onload = () => {
 			push_span(before);
 
 			{
-				const e = $("<key>");
+				const e = document.createElement("key");
 				e.setAttribute("class", do_join ? "keyjoin" : "keyspace");
 				e.innerHTML = keydef;
 				kb.appendChild(e);
@@ -167,7 +128,177 @@ window.onload = () => {
 		}
 	}
 
-	let mutation_observer = null;
+	function hvim_set_source(source) {
+		hvim.source = source;
+		hvim.lines = source.split("\n");
+	}
+
+	const mutobserv = (() => {
+		const mo = new MutationObserver((records) => {
+			const update_set = new Set();
+			function add(em) {
+				if (!em) return;
+				update_set.add(em);
+			}
+
+			for (const r of records) {
+				switch (r.type) {
+				case "childList": {
+					add(r.target);
+					add(r.previousSibling);
+					add(r.nextSibling);
+					for (let r2 of r.removedNodes) add(r2);
+					} break;
+				case "characterData":
+					add(r.target);
+					break;
+				default:
+					console.log("SKIP:" + r.rype);
+					break;
+				}
+			}
+
+			const update_list = [...update_set.values()];
+			const n_update_elements = update_list.length;
+			const n_line_elements = ed.childNodes.length;
+			for (let i0 = 0; i0 < n_line_elements; i0++) {
+				const node = ed.childNodes[i0];
+				let affected_by_mutation = false;
+				for (let i1 = 0; i1 < n_update_elements; i1++) {
+					if (node.contains(update_list[i1])) {
+						affected_by_mutation = true;
+						break;
+					}
+
+				}
+				console.log(i0, affected_by_mutation, node.textContent);
+			}
+
+			//resrc(line_update_range);
+			//markup(line_update_range);
+		});
+
+		let is_active = false;
+		function set_active(p) {
+			if (!is_active && p) {
+				mo.observe(ed, {
+					subtree: true, // extend observation to entire subtree
+					childList: true, characterData: true, // receive these record types
+					//characterDataOldValue: true, // record contains old value too? probably useless?
+				});
+			} else if (is_active && !p) {
+				mo.disconnect();
+			}
+			is_active = p;
+		}
+
+		// used to prevent triggering mutation observations while
+		// making changes to #ed
+		function with_pause(closure) {
+			if (is_active) {
+				set_active(false);
+				let rethrow = null;
+				try {
+					closure();
+				} catch (e) {
+					rethrow = e;
+				}
+				set_active(true);
+				if (rethrow) throw rethrow;
+			} else {
+				closure();
+			}
+		}
+
+		return { set_active, with_pause };
+	})();
+
+	function resrc(line_range) {
+		// "re-source"? XXX?
+	}
+
+	function markup(line_range) {
+		function render_line(line_number) {
+			const line = hvim.lines[line_number];
+			const tokens = compiler.tokenize_line(line);
+
+			let html;
+			if (line.length === 0) {
+				// render empty line. XXX this feels a little
+				// brittle; without <br/> the line is not
+				// shown. I also tried zero-width space, but
+				// that becomes an invisible (but noticeable)
+				// character which is bad
+				html = "<span><br/></span>";
+			} else {
+				html = "";
+				let column = 0;
+				function push_span(typ, body) {
+					html += "<span class=\"syn-"+typ+"\">"+escape_html(body)+"</span>";
+					column += body.length;
+				}
+
+				function add_ws(n) {
+					let ws = "";
+					while (ws.length < n) ws += " ";
+					push_span("whitespace", ws);
+				}
+
+				let cur = 0;
+				for (const [ pos, typ ] of tokens) {
+					const [ c0, c1 ] = pos.slice(2);
+					if (c0 > cur) {
+						add_ws(c0-cur);
+						cur = c0;
+					}
+					push_span(typ, line.slice(c0, c1));
+					cur = c1;
+				}
+			}
+
+			const div = document.createElement("div");
+			div.innerHTML = html;
+			return div;
+		}
+
+		mutobserv.with_pause(_ => {
+			// XXX FIXME
+			if (false && line_range) {
+				const [ line0, line1 ] = line_range;
+				const i0 = line0;
+				const i1 = line1;
+				console.log("MARKUP RANGE", [i0,i1]);
+				for (let i = i0; i < i1; i++) {
+					const old_line = hvim.line_elements[i];
+					if (old_line.parentNode) {
+						old_line.parentNode.removeChild(old_line);
+					} else {
+						console.log("DEL?", i, old_line.textContent, edsearch_line(old_line));
+					}
+					const new_line = render_line(i);
+					hvim.line_elements[i] = new_line;
+					if (i > 0) {
+						hvim.line_elements[i-1].insertAdjacentElement("afterend", new_line);
+					} else {
+						ed.appendChild(new_line);
+					}
+				}
+
+				//return; // XXX only if successful
+				//console.log("TODO"
+			} else {
+				ed.innerHTML = "";
+				//hvim.line_elements = [];
+				const n_lines = hvim.lines.length;
+				for (let line_number = 0; line_number < n_lines; line_number++) {
+					const em = render_line(line_number);
+					//hvim.line_elements.push(em);
+					ed.appendChild(em);
+				}
+			}
+		});
+	}
+
 	let selection_range = [[0,0],[0,0]];
 
 	function get_selection_range() {
@@ -176,7 +307,7 @@ window.onload = () => {
 		const range = selection.getRangeAt(0);
 		let rr = [];
 		for (let i = 0; i < 2; i++) {
-			const c0 = (i ? range.startContainer : range.endContainer);
+			const c0 = (i === 0 ? range.startContainer : range.endContainer);
 			let span = c0.parentNode;
 			if (span.tagName !== "SPAN") {
 				if (c0.tagName === "SPAN") {
@@ -185,10 +316,11 @@ window.onload = () => {
 					return [0,0];
 				}
 			}
-			const p0 = get_p0(span);
-			if (!p0) return [0,0];
-			const [ line, col0 ] = p0;
-			const column = col0 + (i ? range.startOffset : range.endOffset);
+			//const line_col = edsearch_line_col(span);
+			const line_col = [edlin_search(span), -43];
+			if (!line_col) return [0,0];
+			const [ line, col0 ] = line_col;
+			const column = col0 + (i === 0 ? range.startOffset : range.endOffset);
 			rr.push([line, Math.max(0,column)]);
 		}
 		return rr;
@@ -202,7 +334,7 @@ window.onload = () => {
 		const selection = window.getSelection();
 		selection.removeAllRanges();
 		//selectionaddRange(ro);
-	};
+	}
 
 	function light_refresh() {
 		if (hvim.mmode === EDIT) {
@@ -233,12 +365,13 @@ window.onload = () => {
 				[ ANNOTATION , "ed_border_annotation" , "ANNOTATION" , "Annotation Mode (let keybinds guide you)"           ],
 			];
 			for (const [id,cls,label,title] of common_stuff) {
+				const cs = class_set(root);
 				if (hvim.mmode === id) {
 					mode.innerHTML = label;
 					mode.setAttribute("title", title);
-					add_class(root, cls);
+					cs.add(cls);
 				} else {
-					remove_class(root, cls);
+					cs.remove(cls);
 				}
 			}
 		}
@@ -302,55 +435,13 @@ window.onload = () => {
 		for (let [ name, code ] of prg.files) {
 			if (!name.endsWith(".4st")) continue;
 			edit_files.push([name, code]);
-			const opt = $("<option>");
+			const opt = document.createElement("option");
 			opt.innerHTML = name;
 			sel.appendChild(opt);
 		}
 
-		function markup() {
-			const code = hvim.code;
-			const lines = code.split("\n");
-			const html_lines = [];
-			for (let line_number = 0; line_number < lines.length; line_number++) {
-				const line = lines[line_number];
-				const tokens = compiler.tokenize_line(line);
-
-				let hl = "<div>";
-
-				let column = 0;
-
-				function push_span(typ, body) {
-					hl += "<span "+DATA_P0+"=\""+line_number+","+column+"\" class=\"syn-"+typ+"\">"+escape_html(body)+"</span>";
-					column += body.length;
-				};
-
-				function add_ws(n) {
-					let ws = "";
-					while (ws.length < n) ws += " ";
-					push_span("whitespace", ws);
-				};
-
-				let cur = 0;
-				for (const [ pos, typ ] of tokens) {
-					const [ c0, c1 ] = pos.slice(2);
-					if (c0 > cur) {
-						add_ws(c0-cur);
-						cur = c0;
-					}
-					push_span(typ, line.slice(c0, c1));
-					cur = c1;
-				}
-
-				if (line.length === 0) hl += "<span "+DATA_P0+"=\""+line_number+",-1\"><br/></span>";
-
-				hl += "</div>";
-				html_lines.push(hl);
-			}
-			ed.innerHTML = html_lines.join("");
-		}
-
 		function select_index(i) {
-			hvim.code = edit_files[i][1];
+			hvim_set_source(edit_files[i][1]);
 			markup();
 		}
 
@@ -377,43 +468,10 @@ window.onload = () => {
 		}
 		ed.addEventListener('keydown', (ev) => on_keydown(false, ev));
 
-		let line_update_range;
+		//let line_update_range;
 		document.addEventListener('selectionchange', on_selection_change);
-		mutation_observer = new MutationObserver((records) => {
-			line_update_range = null;
-			function eat_p0(p0) {
-				if (!p0) return;
-				let line = p0[0];
-				if (line_update_range === null) {
-					line_update_range = [line, line];
-				} else {
-					line_update_range[0] = Math.min(line, line_update_range[0]);
-					line_update_range[1] = Math.max(line, line_update_range[1]);
-				}
-			}
-			for (const r of records) {
-				switch (r.type) {
-				case "childList": {
-					eat_p0(find_p0(r.target));
-					eat_p0(find_p0(r.previousSibling));
-					eat_p0(find_p0(r.nextSibling));
-					for (let r2 of r.removedNodes) eat_p0(find_p0(r2));
-					} break;
-				case "characterData":
-					eat_p0(find_p0(r.target));
-					break;
-				default:
-					console.log("SKIP:" + r.rype);
-					break;
-				}
-			}
-			console.log("TODO lines updated", line_update_range);
-		});
-		mutation_observer.observe(ed, {
-			subtree: true, // extend observation to entire subtree
-			childList: true, characterData: true, // receive these record types
-			//characterDataOldValue: true, // record contains old value too? probably useless?
-		});
+
+		mutobserv.set_active(true);
 
 		window.addEventListener("keydown", (ev) => on_keydown(true, ev));
 
