@@ -19,59 +19,59 @@ const ssmap = (ss) => {
 		map[ss[i]] = i;
 	}
 	return key => {
-		if (!map[key]) throw new Error("invalid key: " + key);
+		if (map[key] === undefined) throw new Error("invalid key: " + key);
 		return map[key];
 	};
 };
 
-
 const toktyp = (() => {
+	// LSP SemanticTokenTypes (uncomment those we support)
 	const strings = [
-		'namespace',
-		'type',
-		'class',
-		'enum',
-		'interface',
-		'struct',
-		'typeParameter',
-		'parameter',
+		//'namespace',
+		//'type',
+		//'class',
+		//'enum',
+		//'interface',
+		//'struct',
+		//'typeParameter',
+		//'parameter',
 		'variable',
 		'property',
-		'enumMember',
-		'event',
+		//'enumMember',
+		//'event',
 		'function',
 		'method',
 		'macro',
-		'keyword',
-		'modifier',
+		//'keyword',
+		//'modifier',
 		'comment',
-		'string',
+		//'string',
 		'number',
-		'regexp',
+		//'regexp',
 		'operator',
-		'decorator'
+		//'decorator'
 	];
-
 	const map = ssmap(strings);
-	return { lookup: k => map(k) };
+	return { strings, lookup: k => map(k) };
 })();
 
 const tokmod = (() => {
+	// LSP SemanticTokenModifiers (uncomment those we support)
 	const strings = [
-		'declaration',
-		'definition',
+		//'declaration',
+		//'definition',
 		'readonly',
 		'static',
-		'deprecated',
-		'abstract',
-		'async',
-		'modification',
-		'documentation',
-		'defaultLibrary',
+		//'deprecated',
+		//'abstract',
+		//'async',
+		//'modification',
+		//'documentation',
+		//'defaultLibrary',
 	];
-
 	const map = ssmap(strings);
 	return {
+		strings,
 		lookup_all: (ks) => {
 			let b = 0;
 			for (const k of ks) {
@@ -103,8 +103,7 @@ class File {
 
 	tokenize() {
 		let r = [];
-		//let prev_pos = [null, -1,0,null];
-		let prev_pos = [null, 0,0,null];
+		let prev_pos = [null, 0, 0, null];
 		for (const t of this.tokens) {
 			let typ = null, mod = [];
 			switch (t[1]) {
@@ -115,7 +114,7 @@ class File {
 
 			case "BEGIN_INLINE_WORD":
 				typ = "function";
-				//mod = [ "static" ];
+				mod = [ "static" ];
 				break;
 
 			case "BEGIN_TABLE_WORD":
@@ -128,7 +127,7 @@ class File {
 
 			case "BUILTIN_WORD":
 				typ = "variable";
-				//mod = [ "readonly" ];
+				mod = [ "readonly" ];
 				break;
 
 			case "USER_WORD":
@@ -161,7 +160,7 @@ class File {
 			r.push(tokmod.lookup_all(mod));
 			prev_pos = pos;
 		}
-		LOG(JSON.stringify(r));
+		//LOG(JSON.stringify(r));
 		return r;
 	}
 };
@@ -169,28 +168,42 @@ class File {
 let files = {};
 
 function process_client_message(msg) {
+	//LOG("RECV:"+msg);
 	const o = JSON.parse(msg);
 	const m = o.method;
 	const p = o.params;
 
-	function respond(result) {
+	function send(id, more) {
 		let json = JSON.stringify({
 			"jsonrpc": "2.0",
-			"id": o.id,
-			result,
+			"id": id,
+			...more,
 		});
+		//LOG("SEND:"+json);
 		process.stdout.write("Content-Length: " + json.length + "\r\n\r\n" + json);
 	}
 
-	if (m === "initialize") {
+	const send_result = result => send(o.id, {result});
+
+	let next_invoke_id = 0;
+	function invoke(method, params) {
+		if (params === undefined) params = null;
+		send(next_invoke_id++, {method,params});
+	}
+
+	if (m === undefined) {
+		// ignore invoke response?
+	} else if (m === "initialize") {
 		//LOG("INIT:"+JSON.stringify(msg));
-		respond({
+		send_result({
+			serverInfo: {
+			    "name": "lsphack",
+			    "version": "the final version",
+			},
+
 			capabilities: {
 				positionEncoding: "utf-8",
-				// ask client to send entire doc (alternative
-				// is "incremental")
 				textDocumentSync: 1,
-				//hoverProvider: true, // alternative?
 
 				executeCommandProvider: {
 					commands: [
@@ -200,47 +213,12 @@ function process_client_message(msg) {
 				},
 
 				semanticTokensProvider: {
-					legend: {
-						tokenTypes: [
-							//"namespace",
-							//"type",
-							//"class",
-							//"enum",
-							//"interface",
-							//"struct",
-							//"typeParameter",
-							//"parameter",
-							"variable",
-							"property",
-							//"enumMember",
-							//"event",
-							"function",
-							"method",
-							"macro",
-							//"keyword",
-							//"modifier",
-							"comment",
-							//"string",
-							"number",
-							//"regexp",
-							"operator",
-							//"decorator",
-						],
-						tokenModifiers: [
-							//"declaration",
-							//"definition",
-							"readonly",
-							"static",
-							//"deprecated",
-							//"abstract",
-							//"async",
-							//"modification",
-							//"documentation",
-							//"defaultLibrary",
-						],
-					},
 					range: false,
-					full: true,
+					full: { delta: false },
+					legend: {
+						tokenTypes:     toktyp.strings,
+						tokenModifiers: tokmod.strings,
+					},
 				},
 			},
 		});
@@ -251,7 +229,7 @@ function process_client_message(msg) {
 	} else if (m === "textDocument/hover") {
 		LOG("HOV:"+JSON.stringify(p));
 		// HOV:{"position":{"character":0,"line":3},"textDocument":{"uri":"file://"}}
-		respond({
+		send_result({
 			contents: ""
 		});
 	*/
@@ -266,7 +244,7 @@ function process_client_message(msg) {
 		} else {
 			LOG("unhandled command:"+JSON.stringify(msg));
 		}
-		respond(null);
+		send_result(null);
 	} else if (m === "textDocument/didOpen") {
 		const text = p.textDocument.text;
 		const version = p.textDocument.version;
@@ -274,12 +252,14 @@ function process_client_message(msg) {
 		//LOG(JSON.stringify(["OPEN",version,uri,text]));
 		files[uri] = new File(uri);
 		files[uri].update(version, text);
+		invoke("workspace/semanticTokens/refresh");
 	} else if (m === "textDocument/didChange") {
 		const text = p.contentChanges[0].text;
 		const version = p.textDocument.version;
 		const uri = p.textDocument.uri;
 		//LOG("didchange"+JSON.stringify([version,uri,text]));
 		files[uri].update(version, text);
+		invoke("workspace/semanticTokens/refresh");
 	} else if (m === "textDocument/didClose") {
 		const uri = p.textDocument.uri;
 		files[uri].close();
@@ -289,12 +269,15 @@ function process_client_message(msg) {
 	} else if (m === "textDocument/semanticTokens/full") {
 		//LOG("TOK:"+JSON.stringify(p));
 		const uri = p.textDocument.uri;
-		respond({
+		send_result({
 			data: files[uri].tokenize(),
 		});
 	} else if (m === "shutdown") {
 		LOG("shutdown!");
 		process.exit(0);
+	} else if (m === "$/cancelRequest") {
+		// blah blah
+		send(p.id, {error: {"code":-32800,"message":"Request cancelled"}});
 	} else {
 		LOG("UNHANDLED:"+JSON.stringify(msg));
 	}
