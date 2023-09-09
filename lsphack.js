@@ -10,7 +10,7 @@ function LOG(msg) {
 
 let poll_state = {
 	serial: 1,
-	cursor: null,
+	position: null,
 };
 
 const ssmap = (ss) => {
@@ -207,7 +207,8 @@ function process_client_message(msg) {
 
 				executeCommandProvider: {
 					commands: [
-						"cursor",
+						"position",
+						"entrypoint",
 						// ...?
 					],
 				},
@@ -234,13 +235,13 @@ function process_client_message(msg) {
 		});
 	*/
 	} else if (m === "workspace/executeCommand") {
-		if (p.command === "cursor") {
-			if (JSON.stringify(poll_state.cursor) !== JSON.stringify(p.arguments.c)) {
-				//LOG("cursor:"+JSON.stringify(p.arguments.c));
-				poll_state.cursor = p.arguments.c;
+		if (p.command === "position") {
+			if (JSON.stringify(poll_state.position) !== JSON.stringify(p.arguments)) {
+				poll_state.position = p.arguments;
 				poll_state.serial++;
 			}
-
+		} else if (p.command === "entrypoint") {
+			// TODO both "set entrypoint word" and "remove"
 		} else {
 			LOG("unhandled command:"+JSON.stringify(msg));
 		}
