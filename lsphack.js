@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 const fs = require("fs");
+const compiler = require("./compiler.js")(null);
 
 function LOG(msg) {
 	// in neovim see :lua print(vim.lsp.get_log_path())
@@ -11,6 +12,161 @@ let poll_state = {
 	serial: 1,
 	cursor: null,
 };
+
+const ssmap = (ss) => {
+	let map = {};
+	for (let i = 0; i < ss.length; i++) {
+		map[ss[i]] = i;
+	}
+	return key => {
+		if (!map[key]) throw new Error("invalid key: " + key);
+		return map[key];
+	};
+};
+
+
+const toktyp = (() => {
+	const strings = [
+		'namespace',
+		'type',
+		'class',
+		'enum',
+		'interface',
+		'struct',
+		'typeParameter',
+		'parameter',
+		'variable',
+		'property',
+		'enumMember',
+		'event',
+		'function',
+		'method',
+		'macro',
+		'keyword',
+		'modifier',
+		'comment',
+		'string',
+		'number',
+		'regexp',
+		'operator',
+		'decorator'
+	];
+
+	const map = ssmap(strings);
+	return { lookup: k => map(k) };
+})();
+
+const tokmod = (() => {
+	const strings = [
+		'declaration',
+		'definition',
+		'readonly',
+		'static',
+		'deprecated',
+		'abstract',
+		'async',
+		'modification',
+		'documentation',
+		'defaultLibrary',
+	];
+
+	const map = ssmap(strings);
+	return {
+		lookup_all: (ks) => {
+			let b = 0;
+			for (const k of ks) {
+				b |= 1 << map(k);
+			}
+			return b;
+		},
+	}
+})();
+
+
+class File {
+	constructor(uri) {
+		this.uri = uri;
+	}
+
+	close() {
+	}
+
+	update(version, text) {
+		this.version = version;
+		this.text = text;
+		try {
+			this.tokens = compiler.tokenize_string(path.basename(this.uri), text);
+		} catch (e) {
+			this.tokens = [];
+		}
+	}
+
+	tokenize() {
+		let r = [];
+		//let prev_pos = [null, -1,0,null];
+		let prev_pos = [null, 0,0,null];
+		for (const t of this.tokens) {
+			let typ = null, mod = [];
+			switch (t[1]) {
+			case "BEGIN_WORD":
+			case "END_WORD":
+				typ = "function";
+				break;
+
+			case "BEGIN_INLINE_WORD":
+				typ = "function";
+				//mod = [ "static" ];
+				break;
+
+			case "BEGIN_TABLE_WORD":
+				typ = "method";
+				break;
+
+			case "NUMBER":
+				typ = "number";
+				break;
+
+			case "BUILTIN_WORD":
+				typ = "variable";
+				//mod = [ "readonly" ];
+				break;
+
+			case "USER_WORD":
+				typ = "variable";
+				break;
+
+			case "WORD_INDEX":
+				typ = "property";
+				break;
+
+			case "COMMENT":
+				typ = "comment";
+				break;
+
+			case "OP":
+				typ = "operator";
+				break;
+
+			case "DIRECTIVE":
+				typ = "macro";
+				break;
+			}
+
+			if (typ === null) continue;
+			let pos = t[0];
+			r.push(pos[1] - prev_pos[1]);
+			r.push((prev_pos[1] === pos[1] ? pos[2] - prev_pos[2] : 0));
+			r.push(pos[3] - pos[2]);
+			r.push(toktyp.lookup(typ));
+			r.push(tokmod.lookup_all(mod));
+			prev_pos = pos;
+		}
+		LOG(JSON.stringify(r));
+		return r;
+	}
+};
+
+let files = {};
 
 function process_client_message(msg) {
 	const o = JSON.parse(msg);
@@ -35,11 +191,56 @@ function process_client_message(msg) {
 				// is "incremental")
 				textDocumentSync: 1,
 				//hoverProvider: true, // alternative?
+
 				executeCommandProvider: {
 					commands: [
 						"cursor",
 						// ...?
 					],
+				},
+
+				semanticTokensProvider: {
+					legend: {
+						tokenTypes: [
+							//"namespace",
+							//"type",
+							//"class",
+							//"enum",
+							//"interface",
+							//"struct",
+							//"typeParameter",
+							//"parameter",
+							"variable",
+							"property",
+							//"enumMember",
+							//"event",
+							"function",
+							"method",
+							"macro",
+							//"keyword",
+							//"modifier",
+							"comment",
+							//"string",
+							"number",
+							//"regexp",
+							"operator",
+							//"decorator",
+						],
+						tokenModifiers: [
+							//"declaration",
+							//"definition",
+							"readonly",
+							"static",
+							//"deprecated",
+							//"abstract",
+							//"async",
+							//"modification",
+							//"documentation",
+							//"defaultLibrary",
+						],
+					},
+					range: false,
+					full: true,
 				},
 			},
 		});
@@ -67,15 +268,30 @@ function process_client_message(msg) {
 		}
 		respond(null);
 	} else if (m === "textDocument/didOpen") {
-		const tt = p.textDocument.text;
-		const tv = p.textDocument.version;
-		const tu = p.textDocument.uri;
-		//LOG(JSON.stringify(["OPEN",tv,tu,tt]));
+		const text = p.textDocument.text;
+		const version = p.textDocument.version;
+		const uri = p.textDocument.uri;
+		//LOG(JSON.stringify(["OPEN",version,uri,text]));
+		files[uri] = new File(uri);
+		files[uri].update(version, text);
 	} else if (m === "textDocument/didChange") {
-		const cc = p.contentChanges.map(x=>x.text).join("\n");
-		const tv = p.textDocument.version;
-		const tu = p.textDocument.uri;
-		//LOG("didchange"+JSON.stringify([tv,tu,cc]));
+		const text = p.contentChanges[0].text;
+		const version = p.textDocument.version;
+		const uri = p.textDocument.uri;
+		//LOG("didchange"+JSON.stringify([version,uri,text]));
+		files[uri].update(version, text);
+	} else if (m === "textDocument/didClose") {
+		const uri = p.textDocument.uri;
+		files[uri].close();
+		delete files[uri];
+	} else if (m === "textDocument/didSave") {
+		// ...
+	} else if (m === "textDocument/semanticTokens/full") {
+		//LOG("TOK:"+JSON.stringify(p));
+		const uri = p.textDocument.uri;
+		respond({
+			data: files[uri].tokenize(),
+		});
 	} else if (m === "shutdown") {
 		LOG("shutdown!");
 		process.exit(0);
