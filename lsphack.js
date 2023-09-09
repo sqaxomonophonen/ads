@@ -154,7 +154,7 @@ class File {
 			if (typ === null) continue;
 			let pos = t[0];
 			r.push(pos[1] - prev_pos[1]);
-			r.push((prev_pos[1] === pos[1] ? pos[2] - prev_pos[2] : 0));
+			r.push((prev_pos[1] === pos[1] ? pos[2] - prev_pos[2] : pos[2]));
 			r.push(pos[3] - pos[2]);
 			r.push(toktyp.lookup(typ));
 			r.push(tokmod.lookup_all(mod));
