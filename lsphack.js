@@ -27,7 +27,7 @@ function process_client_message(msg) {
 	}
 
 	if (m === "initialize") {
-		LOG("INIT:"+JSON.stringify(msg));
+		//LOG("INIT:"+JSON.stringify(msg));
 		respond({
 			capabilities: {
 				positionEncoding: "utf-8",
@@ -43,6 +43,9 @@ function process_client_message(msg) {
 				},
 			},
 		});
+		LOG("lsphack.js started!");
+	} else if (m === "initialized") {
+		// ...
 	/*
 	} else if (m === "textDocument/hover") {
 		LOG("HOV:"+JSON.stringify(p));
@@ -54,7 +57,7 @@ function process_client_message(msg) {
 	} else if (m === "workspace/executeCommand") {
 		if (p.command === "cursor") {
 			if (JSON.stringify(poll_state.cursor) !== JSON.stringify(p.arguments.c)) {
-				LOG("cursor:"+JSON.stringify(p.arguments.c));
+				//LOG("cursor:"+JSON.stringify(p.arguments.c));
 				poll_state.cursor = p.arguments.c;
 				poll_state.serial++;
 			}
@@ -63,6 +66,16 @@ function process_client_message(msg) {
 			LOG("unhandled command:"+JSON.stringify(msg));
 		}
 		respond(null);
+	} else if (m === "textDocument/didOpen") {
+		const tt = p.textDocument.text;
+		const tv = p.textDocument.version;
+		const tu = p.textDocument.uri;
+		//LOG(JSON.stringify(["OPEN",tv,tu,tt]));
+	} else if (m === "textDocument/didChange") {
+		const cc = p.contentChanges.map(x=>x.text).join("\n");
+		const tv = p.textDocument.version;
+		const tu = p.textDocument.uri;
+		//LOG("didchange"+JSON.stringify([tv,tu,cc]));
 	} else if (m === "shutdown") {
 		LOG("shutdown!");
 		process.exit(0);
