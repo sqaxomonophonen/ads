@@ -304,7 +304,7 @@ const vm = (() => {
 								vm_state.set_iteration_counter(1); // prepare single-step
 								vm_state = prg.vm(prg.vm_words, vm_state); // single-step
 								vm_state.set_iteration_counter(tmp-1); // restore iteration counter
-								vm_state.set_breakpoint(-1);
+								prg.set_breakpoint(brkpos); // restore breakpoint (vm_state.set_breakpoint(-1) is tempting, but op may be a jump)
 							}
 						} else {
 							// in-code breakpoint?
