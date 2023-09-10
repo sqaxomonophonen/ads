@@ -24,10 +24,10 @@ function new_compiler(read_file_fn) {
 		[   WORD    , "while"     ,  ID     ,  "DO_WHILE"    , FLAG_KEYWORD ],
 		[   CALL    ,             ,  ID     ,  "CALL_IMM"    ],
 		[   WORD    , "call"      ,  ID     ,  "CALL_POP"    ],
-		[   WORD    , "pick"      ,  ID     ,  "PICK"        ],
-		[   WORD    , "drop"      ,  ID     ,  "DROP"        ],
-		[   WORD    , "nrot"      ,  ID     ,  "NROT"        ], // called "roll" in forth
-		[   WORD    , "ntro"      ,  ID     ,  "NTRO"        ],
+		[   WORD    , "pick"      ,  ID     ,  "pick"        ],
+		[   WORD    , "drop"      ,  ID     ,  "drop"        ],
+		[   WORD    , "nrot"      ,  ID     ,  "nrot"        ], // called "roll" in forth
+		[   WORD    , "ntro"      ,  ID     ,  "ntro"        ],
 		[   OP1     , "+"         ,  INFIX  ,  "+"           ],
 		[   OP1     , "-"         ,  INFIX  ,  "-"           ],
 		[   OP1     , "*"         ,  INFIX  ,  "*"           ],
@@ -82,7 +82,7 @@ function new_compiler(read_file_fn) {
 		[   WORD    , "arrjoin"   ,  ID     ,  "arrjoin"     ], //  [1,2] [3,4] -- [1,2,3,4]
 		[   WORD    , "arrsplit"  ,  ID     ,  "arrsplit"    ], //  [1,2,3,4] 3 -- [1,2,3] [4]
 
-		// graph
+		// graph (all backed by lib.4st user words)
 		[   WORD    , "thru"      ,  USER_WORD ,  "graph_thru"     ], //                  n -- n-input, n-output, pass-thru graph
 		[   WORD    , "curvegen"  ,  USER_WORD ,  "graph_curvegen" ], //              curve -- curve generator graph
 		[   OP1     , "~"         ,  USER_WORD ,  "graph_compseq"  ], //                A B -- A~B (see FAUST sequential composition)

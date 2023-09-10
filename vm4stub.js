@@ -136,8 +136,8 @@
 	/*ST4:CALL_IMM*/push_op(_ => call_word(current_oparg)); // immediate call
 	/*ST4:CALL_POP*/push_op(_ => call_word(POP())); // indirect/popped call
 
-	/*ST4:PICK*/push_op(_=> u(PICK(POP())));
-	/*ST4:DROP*/push_op(__a => { POP() }); // drop (   a --       )
+	/*ST4:pick*/push_op(_=> u(PICK(POP())));
+	/*ST4:drop*/push_op(__a => { POP() }); // drop (   a --       )
 	const rotate = (direction, __n, __xs, __i) => {
 		__n = POP();
 		__xs = s(__n);
@@ -153,8 +153,8 @@
 		stack[__i0 + n - 1] = __tmp;
 	};
 	*/
-	/*ST4:NROT*/push_op(_=>rotate(1));
-	/*ST4:NTRO*/push_op(_=>rotate(-1));
+	/*ST4:nrot*/push_op(_=>rotate(1));
+	/*ST4:ntro*/push_op(_=>rotate(-1));
 
 	for (op of ssplit(ST4_INFIX))  push_opn1_expr(2, "a"+op+"b");
 	for (op of ST4_PREFIX)         push_opn1_expr(1, op+"a");
