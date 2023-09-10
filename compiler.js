@@ -745,53 +745,88 @@ function new_compiler(read_file_fn) {
 			// becomes [brk, PUSH_IMM, 42]. this makes it easy to
 			// disable the breakpoint by .slice(1)'ing it
 
-			function is_temporary_breakpoint(word_op_position) {
+			function is_temporary_breakpoint_at(word_op_position) {
 				const op = get_op(word_op_position);
 				return op.length >= 2 && op[0] === brk();
 			}
 
-			function set_breakpoint(word_op_position) {
-				if (is_temporary_breakpoint(word_op_position)) return;
+			function set_breakpoint_at(word_op_position) {
+				if (is_temporary_breakpoint_at(word_op_position)) return;
 				const op = get_op(word_op_position);
 				op.unshift(brk());
 			}
 
-			function remove_breakpoint(word_op_position) {
-				if (!is_temporary_breakpoint(word_op_position)) return;
+			function remove_breakpoint_at(word_op_position) {
+				if (!is_temporary_breakpoint_at(word_op_position)) return;
 				const op = get_op(word_op_position);
 				op.shift();
 			}
 
-			function bless(vm_state) {
+			function bless(raw) {
 				const PC0=0, PC1=1, STACK=2, RSTACK=3, GLOBALS=4, ITERATION_COUNT=5, GRAPH_TAG_SET=6;
-				const pc0 = () => vm_state[PC0];
-				const pc1 = () => vm_state[PC1];
+				const pc0 = () => raw[PC0];
+				const pc1 = () => raw[PC1];
 				const pc = (delta) => [pc0(), pc1()+(delta|0)];
 				const get_op = () => vm_words[pc0()][pc1()-1];
-				const get_position = vm_state => dbg_words[pc0()][pc1()-1];
+				const get_position = () => dbg_words[pc0()][pc1()-1];
+				const get_iteration_counter =  () => raw[ITERATION_COUNT];
+				const set_iteration_counter = (n) => raw[ITERATION_COUNT] = n;
+				function rewind(n) {
+					raw[PC1] -= n;
+				}
+
+				function set_breakpoint(delta) {
+					set_breakpoint_at(pc(delta));
+				}
+				function remove_breakpoint(delta) {
+					remove_breakpoint_at(pc(delta));
+				}
+
+				function run() {
+					raw = vm(vm_words, raw);
+				}
+
+				function continue_after_user_breakpoint() {
+					// "old school" remove-breakpoint => single-step => reset-breakpoint => continue
+					// this is because adhoc breakpoints are implemented by overwriting
+					// instructions with brk instructions. this is much preferable to
+					// rstack corruption bugs (if brk was instead inserted/deleted)
+					// and VM bloat (gotta keep it small)
+					rewind(1);
+					const brkpos = pc();
+					remove_breakpoint();
+					const tmp = get_iteration_counter();
+					set_iteration_counter(1); // prepare single-step
+					run(); // single-step
+					set_iteration_counter(tmp-1); // restore iteration counter
+					set_breakpoint_at(brkpos); // restore breakpoint
+				}
+
 				return {
-					raw: vm_state,
-					can_run: () => vm_state[PC0] >= 0 && vm_state[ITERATION_COUNT] > 0,
-					get_iteration_counter:  () => vm_state[ITERATION_COUNT],
-					set_iteration_counter: (n) => vm_state[ITERATION_COUNT] = n,
-					get_stack: () => vm_state[STACK],
-					get_rstack: () => vm_state[RSTACK],
-					did_exit: () => vm_state[PC0] < 0,
+					get_raw: () => raw,
+					can_run: () => raw[PC0] >= 0 && raw[ITERATION_COUNT] > 0,
+					get_iteration_counter,
+					set_iteration_counter,
+					get_stack: () => raw[STACK],
+					get_rstack: () => raw[RSTACK],
+					did_exit: () => raw[PC0] < 0,
 					broke_at_assertion:   () => get_op()[0] === opresolv(WORD, "assert"),
 					broke_at_breakpoint:  () => get_op()[0] === brk(),
 					get_position,
 					pc,
 					get_position_human: () => {
-						const pos = get_position(vm_state);
+						const pos = get_position();
 						return pos[0] + ":" + (1+pos[1]) + ":" + (1+pos[2]);
 					},
-					set_breakpoint:    (delta) => set_breakpoint(pc(delta)),
-					remove_breakpoint: (delta) => remove_breakpoint(pc(delta)),
-					rewind: (n) => { vm_state[PC1] -= n; },
+					set_breakpoint,
+					remove_breakpoint,
 					set_pc_to_export_word_index: (i) => {
-						vm_state[PC0] = export_word_indices[i];
-						vm_state[PC1] = 0;
+						raw[PC0] = export_word_indices[i];
+						raw[PC1] = 0;
 					},
+					continue_after_user_breakpoint,
+					run,
+					blessed: true,
 				};
 			}
 
@@ -804,22 +839,16 @@ function new_compiler(read_file_fn) {
 				])
 			}
 
-			function vm_wrapper(vm_words, vm_state) {
-				if (!vm_state.raw) throw new Error("XXX");
-				return bless(vm(vm_words, vm_state.raw));
-			}
-
 			return {
 				raw_vm: vm,
 				new_state,
-				vm: vm_wrapper,
 				vm_words,
 				dbg_words,
 				export_word_indices,
 				export_word_names,
 				vm_src,
-				set_breakpoint,
-				remove_breakpoint,
+				set_breakpoint_at,
+				remove_breakpoint_at,
 			};
 		}
 

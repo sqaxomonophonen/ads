@@ -55,7 +55,7 @@ TIME("4st test", () => {
 				vm_state.set_pc_to_export_word_index(xi);
 
 				while (vm_state.can_run()) {
-					vm_state = test_prg.vm(test_prg.vm_words, vm_state);
+					vm_state.run();
 					if (!vm_state.did_exit()) {
 						const pos = vm_state.get_position_human();
 						if (vm_state.broke_at_assertion()) {

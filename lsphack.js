@@ -271,7 +271,7 @@ const vm = (() => {
 				];
 				brkpos = cc.find_2lvl_position_at_or_after(prg.dbg_words, curpos[0], curpos[1], curpos[2]);
 				if (brkpos) {
-					prg.set_breakpoint(brkpos);
+					prg.set_breakpoint_at(brkpos);
 				}
 			}
 
@@ -286,25 +286,14 @@ const vm = (() => {
 					break;
 				}
 				entries++;
-				vm_state = prg.vm(prg.vm_words, vm_state);
+				vm_state.run();
 				if (!vm_state.did_exit()) {
 					if (vm_state.broke_at_breakpoint()) {
 						if (deepeq(vm_state.pc(-1), brkpos)) {
 							LOG("PASS " + entries + " at pc=" + JSON.stringify(vm_state.pc(-1)) + " (brkpos=" + JSON.stringify(brkpos) +  ") at " + vm_state.get_position_human());
 							passes_left--;
 							if (passes_left > 0) {
-								// "old school" remove-breakpoint => single-step => reset-breakpoint => continue
-								// this is because adhoc breakpoints are implemented by overwriting
-								// instructions with brk instructions. this is much preferable to
-								// rstack corruption bugs (if brk was instead inserted/deleted)
-								// and VM bloat (gotta keep it small)
-								vm_state.remove_breakpoint(-1);
-								vm_state.rewind(1);
-								const tmp = vm_state.get_iteration_counter();
-								vm_state.set_iteration_counter(1); // prepare single-step
-								vm_state = prg.vm(prg.vm_words, vm_state); // single-step
-								vm_state.set_iteration_counter(tmp-1); // restore iteration counter
-								prg.set_breakpoint(brkpos); // restore breakpoint (vm_state.set_breakpoint(-1) is tempting, but op may be a jump)
+								vm_state.continue_after_user_breakpoint();
 							}
 						} else {
 							// in-code breakpoint?
