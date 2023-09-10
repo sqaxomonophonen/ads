@@ -356,9 +356,6 @@ const vm = (() => {
 	};
 })();
 
-let files = {};
-
-
 function process_client_message(msg) {
 	//LOG("RECV:"+msg);
 	const o = JSON.parse(msg);
