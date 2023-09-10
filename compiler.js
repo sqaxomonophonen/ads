@@ -826,7 +826,6 @@ function new_compiler(read_file_fn) {
 					},
 					continue_after_user_breakpoint,
 					run,
-					blessed: true,
 				};
 			}
 
