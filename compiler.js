@@ -113,12 +113,16 @@ function new_compiler(read_file_fn) {
 	OP="OP", BEGIN_TABLE_WORD="BEGIN_TABLE_WORD",
 	BEGIN_INLINE_WORD="BEGIN_INLINE_WORD", WORD_INDEX="WORD_INDEX",
 	RESOLVE_WORD_INDEX="RESOLVE_WORD_INDEX", FLATTEN_INLINE="FLATTEN_INLINE"
+	TOKEN_ERROR="TOKEN_ERROR"
 	;
 
-	function tokenize_line(line, pos) {
-		let mark_pos, token_pos;
+	const chain_state = (state) => state ? state : { tokens: [], positions: [], error_latch: false };
 
-		if (pos === undefined) pos = 0;
+	function tokenize_line(line, state) {
+		state = chain_state(state);
+
+		let mark_pos, token_pos;
+		let pos = 0;
 
 		const get_char = () => line[pos++];
 
@@ -159,22 +163,27 @@ function new_compiler(read_file_fn) {
 			return line.slice(mark_pos, pos);
 		}
 
-		const ERR4 = (msg) => { throw ["ERR4",[null,null,token_pos],msg]; };
+		const get_position = () => [null,null,token_pos,pos];
 
 		let is_directive     = false;
 		let is_non_directive = false;
 
-		let tokens = [];
+		function push_error_token(message) {
+			state.tokens.push([TOKEN_ERROR, message]);
+			state.positions.push(get_position());
+			state.error_latch = true;
+		}
+
 		function push_token(type, data0, data1, data2) {
 			if (type === DIRECTIVE) {
-				if (is_directive) ERR4("line cannot contain more than one directive");
+				if (is_directive) return push_error_token("line cannot contain more than one directive");
 				is_directive = true;
 			} else if (type !== COMMENT) {
 				is_non_directive = true;
 			}
-			if (is_directive && is_non_directive) ERR4("line cannot contain both directives and non-directives");
+			if (is_directive && is_non_directive) return push_error_token("line cannot contain both directives and non-directives");
 
-			let token = [[null, null, token_pos, pos], type];
+			let token = [type];
 			if (data0) {
 				token.push(data0);
 				if (data1) {
@@ -184,12 +193,14 @@ function new_compiler(read_file_fn) {
 					}
 				}
 			}
-			tokens.push(token);
+			state.tokens.push(token);
+
+			state.positions.push(get_position());
 		}
 
 		const WORD_PATTERN0   = ["az","AZ","_"];
 		const NUMBER_PATTERN  = ["09"];
-		const WORD_PATTERN    = [...WORD_PATTERN0, ...NUMBER_PATTERN ];
+		const WORD_PATTERN    = [...WORD_PATTERN0, ...NUMBER_PATTERN];
 
 		for (;;) {
 			mark_token_begin();
@@ -206,14 +217,8 @@ function new_compiler(read_file_fn) {
 					mark();
 					const include_path = eat_while_match([...WORD_PATTERN, "."]);
 					push_token(DIRECTIVE, "include", include_path);
-				} else if (directive === "define") {
-					skip_whitespace();
-					mark();
-					const defword = eat_while_match(WORD_PATTERN);
-					push_token(DIRECTIVE, "define", defword, tokenize_line(pos));
-					break;
 				} else {
-					ERR4("unhandled directive: " + directive);
+					push_error_token("unhandled directive: " + directive);
 				}
 			} else if (ch === "\\") {
 				mark();
@@ -239,8 +244,9 @@ function new_compiler(read_file_fn) {
 				skip_whitespace();
 				mark();
 				const word = eat_while_match(WORD_PATTERN)
-				if (word.trim().length === 0) ERR4("expected word");
-				if (type === "@") {
+				if (word.trim().length === 0) {
+					push_error_token("expected word");
+				} else if (type === "@") {
 					push_token(BEGIN_TABLE_WORD, word);
 				} else if (type === "=") {
 					push_token(BEGIN_INLINE_WORD, word);
@@ -260,88 +266,111 @@ function new_compiler(read_file_fn) {
 					if (ch2 === undefined) break;
 					depth += (ch2 === "(") - (ch2 === ")");
 				}
-				if (depth > 0) ERR4("comment not terminated (multi-line comments are not possible)");
-				push_token(COMMENT);
-			} else {
-				ERR4("unexpected character: " + ch);
-			}
-		}
-
-		return tokens;
-	}
-
-	function ERR4_PATCH(e, patch) {
-		if (e.length !== undefined && e[0] === "ERR4") {
-			for (let i = 0; i < patch.length; i++) {
-				if (patch[i] === null) continue;
-				e[1][i] = patch[i];
-			}
-			return e;
-		} else {
-			return e;
-		}
-	}
-
-	function tokenize_lines(lines) {
-		let tokens = [];
-		for (let line_number = 0; line_number < lines.length; line_number++) {
-			const line = lines[line_number];
-			try {
-				for (const line_token of tokenize_line(line)) {
-					line_token[0][1] = line_number;
-					tokens.push(line_token);
+				if (depth > 0) {
+					push_error_token("comment not terminated before newline (this language doesn't have multi-line comments)")
+				} else {
+					push_token(COMMENT);
 				}
-			} catch (e) {
-				throw ERR4_PATCH(e, [null, line_number, null]);
+			} else {
+				push_error_token("unexpected character: " + ch);
 			}
 		}
-		return tokens;
+
+		return state;
 	}
 
-	const tokenize_string = (filename, string) => {
-		try {
-			return tokenize_lines(string.split("\n")).map(x => { x[0][0] = filename; return x; });
-		} catch (e) {
-			throw ERR4_PATCH(e, [filename, null, null]);
+	function tokenize_lines(lines, state) {
+		state = chain_state(state);
+		for (let line_number = 0; line_number < lines.length; line_number++) {
+			const i0 = state.positions.length;
+			state = tokenize_line(lines[line_number], state);
+			// patch in line numbers
+			for (let i = i0; i < state.positions.length; i++) {
+				state.positions[i][1] = line_number;
+			}
 		}
-	};
+		return state;
+	}
 
-	const tokenize_file = (filename) => tokenize_string(filename, read_file_fn(filename));
-	function preprocess_file(filename, header_tokens) {
-		let stack = [];
-		const push = (toks) => stack.push([0,toks]);
+	function tokenize_string(filename, string, state) {
+		state = chain_state(state);
+		state = tokenize_lines(string.split("\n"), state)
+		// patch in filename
+		for (let i = 0; i < state.positions.length; i++) {
+			state.positions[i][0] = filename;
+		}
+		return state;
+	}
+
+	const tokenize_file = (filename, state) => tokenize_string(filename, read_file_fn(filename, state));
+
+	// similar to tokenize_file(), but resolves #include statements
+	function preprocess_from_entry_file(filename, flattened_state) {
+		flattened_state = chain_state(flattened_state);
+		let stack = [], top;
+		const set_top = () => { top = stack[stack.length-1]; };
+		const push = (state) => { stack.push([0,state]); set_top(); };
+		const pop = () => { stack.pop(); set_top(); }
 		push(tokenize_file(filename));
-		if (header_tokens) push(header_tokens);
-		let tokens = [];
-		while (stack.length > 0) {
-			let e = stack[stack.length-1];
-			const file_tokens = e[1];
-			const file_token = file_tokens[e[0]++];
-			if (file_token === undefined) {
-				stack.pop();
-			} else if (file_token[1] === DIRECTIVE) {
-				const dt = file_token[2];
-				if (dt === "include") {
-					push(tokenize_file(file_token[3]));
+		while (top) {
+			const topi = top[0]++;
+			if (top.error_latch) flattened_state.error_latch = true;
+			const top_state = top[1];
+			const token = top_state.tokens[topi];
+			if (token === undefined) {
+				pop();
+				continue;
+			} else if (token[0] === DIRECTIVE) {
+				if (token[1] === "include") {
+					push(tokenize_file(token[2]));
 				} else {
 					throw new Error("unhandled directive type: " + dt);
 				}
 			} else {
-				tokens.push(file_token);
+				flattened_state.tokens.push(token);
+				flattened_state.positions.push(top_state.positions[topi]);
 			}
 		}
-		return tokens;
+		return flattened_state;
 	}
 
 	const is_test_word = word => word.startsWith("test_");
 	const is_main_word = word => word.startsWith("main_");
 
+	function find_position(positions, filename, line, column) {
+		for (let i = 0; i < positions.length; i++) {
+			const pos = positions[i];
+			if (pos[0] !== filename) continue;
+			if (pos[1] !== line) continue;
+			if (!(pos[2] <= column && column <= pos[3])) continue;
+			return i;
+		}
+		return -1;
+	}
+
+	function find_2lvl_position_at_or_after(positions2lvl, filename, line, column) {
+		const n0 = positions2lvl.length;
+		for (let i0 = 0; i0 < n0; i0++) {
+			const positions = positions2lvl[i0];
+			const n1 = positions.length;
+			for (let i1 = 0; i1 < n1; i1++) {
+				const pos = positions[i1];
+				if (pos[0] !== filename) continue;
+				if (line > pos[1]) continue;
+				if (line === pos[1] && column > pos[2]) continue;
+				return [i0, i1];
+			}
+		}
+		return null;
+	}
+
 	function compile(filename, is_release) {
 		let preamble = "";
 		preamble += ":= DTGRAPH" + (is_release ? "" : " _DTGRAPH") + " ;\n";
-		const raw_tokens = preprocess_file(filename, tokenize_string("<preamble.4st>", preamble));
+		let state = tokenize_string("<preamble.4st>", preamble);
+		state = preprocess_from_entry_file(filename, state);
 
-		const token_it = (_ => { let i=0; return _ => raw_tokens[i++]; })();
+		let token_cursor = -1;
 		let word_serial = 0;
 
 		function get_word_tree(depth) {
@@ -356,26 +385,31 @@ function new_compiler(read_file_fn) {
 
 			let end_of_word = false;
 			while (!end_of_word) {
-				const tok = token_it();
+				token_cursor++;
+				const tok = state.tokens[token_cursor];
+				const pos = state.positions[token_cursor];
 				if (!tok) {
-					if (depth > 0) throw new Error("end of token stream inside word (depth="+depth+")");
+					if (depth > 0) {
+						throw [null, "end of token stream inside word (depth="+depth+")"];
+					}
 					break;
 				}
-				const [ pos, typ, arg0, arg1 ] = tok;
+				const [ typ, arg0, arg1 ] = tok;
 				const push_op = (op) => {
-					if (!word.ops) throw ["ERR4", tok[0], "op in root scope not allowed"];
+					if (!word.ops) throw [pos, "op in root scope not allowed"];
 					if (typeof op[0] !== "number") throw new Error("sanity check failed");
 					word.ops.push(op);
 					word.oppos.push(pos);
 				};
 				switch (typ) {
 				case DIRECTIVE: throw new Error("should not see directives here (missing preprocessor)");
+				case TOKEN_ERROR: throw [pos, arg0];
 				case COMMENT: break; // skip
 
 				case BEGIN_WORD:
 				case BEGIN_TABLE_WORD:
 				case BEGIN_INLINE_WORD: {
-					const subword = get_word_tree((depth|0)+1);
+					const subword = get_word_tree(depth+1);
 					subword.name = arg0;
 					if (typ === BEGIN_TABLE_WORD)  subword.is_table_word = true;
 					if (typ === BEGIN_INLINE_WORD) subword.is_inline_word = true;
@@ -402,7 +436,7 @@ function new_compiler(read_file_fn) {
 			return word;
 		}
 
-		let root_word = get_word_tree(raw_tokens);
+		let root_word = get_word_tree(0);
 
 		const vm4stub_lines = read_file_fn("vm4stub.js").split("\n");
 
@@ -686,17 +720,20 @@ function new_compiler(read_file_fn) {
 		};
 	};
 
+
 	return {
 		tokenize_line,
 		tokenize_lines,
 		tokenize_string,
 		tokenize_file,
-		preprocess_file,
+		preprocess_from_entry_file,
 		compile,
 		compile_debug:   f=>compile(f,false),
 		compile_release: f=>compile(f,true),
 		is_test_word,
 		is_main_word,
+		find_position,
+		find_2lvl_position_at_or_after,
 	};
 }
 

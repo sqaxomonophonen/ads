@@ -130,13 +130,15 @@ const filesys = (() => {
 })();
 
 function lsp_tokenize(uri) {
-	const tokens = create_compiler(null).tokenize_string(uri, filesys.read_uri(uri));
+	const state = create_compiler(null).tokenize_string(uri, filesys.read_uri(uri));
 
 	let r = [];
 	let prev_pos = [null, 0, 0, null];
-	for (const t of tokens) {
+	const n = state.tokens.length;
+	for (let i = 0; i < n; i++) {
+		const token = state.tokens[i];
 		let typ = null, mod = [];
-		switch (t[1]) {
+		switch (token[0]) {
 		case "BEGIN_WORD":
 		case "END_WORD":
 			typ = "function";
@@ -179,10 +181,13 @@ function lsp_tokenize(uri) {
 		case "DIRECTIVE":
 			typ = "macro";
 			break;
+
+		case "TOKEN_ERROR":
+			break;
 		}
 
 		if (typ === null) continue;
-		const pos = t[0];
+		const pos = state.positions[i];
 		r.push(pos[1] - prev_pos[1]);
 		r.push((prev_pos[1] === pos[1] ? pos[2] - prev_pos[2] : pos[2]));
 		r.push(pos[3] - pos[2]);
@@ -227,7 +232,7 @@ const vm = (() => {
 	let n_passes = 0;
 	//let total_passes; // XXX?
 	let max_iterations = 250e3;
-	let position = null;
+	let cursor_position = null;
 	let vm = null;
 	let serial = 1;
 	let root;
@@ -241,7 +246,8 @@ const vm = (() => {
 	function rerun() {
 		if (entrypoint_word === null) return;
 		try {
-			const cu = mk_compiler().compile(entrypoint_filename);
+			const cc = mk_compiler();
+			const cu = cc.compile(entrypoint_filename);
 			const prg = cu.trace_program((depth,name) => name === entrypoint_word);
 			if (prg.export_word_indices.length !== 1) {
 				LOG("expected 1 exported word, got " + prg.export_word_indices.length);
@@ -253,40 +259,55 @@ const vm = (() => {
 				max_iterations,
 				new WeakSet(),
 			];
+
+			let brkpos = null;
+			if (cursor_position != null) {
+				const curpos = [
+					path.basename(filesys.uri_to_full_path(cursor_position.uri)),
+					cursor_position.line,
+					cursor_position.column,
+				];
+				brkpos = cc.find_2lvl_position_at_or_after(prg.dbg_words, curpos[0], curpos[1], curpos[2]);
+				//if (brkpos) LOG("brkpos " + JSON.stringify(brkpos) + " at " + JSON.stringify(curpos));
+			}
+			//let brkpos = cc.find_position(prg.dbg_words, filesys.uri_to_full_path(cursor_position.uri), cursor_position.line, cursor_position.column);
+
+			let iteration_budget_exceeded = false;
 			for (let i = 0; i <= n_passes; i++) {
 				vm_state = prg.vm(prg.vm_words, vm_state);
-				if (vm_state[5] === 0) break;
+				if (vm_state[5] === 0) {
+					iteration_budget_exceeded = true;
+					break;
+				}
 			}
 			LOG("stack:"+JSON.stringify(vm_state[2]));
 		} catch(e) {
-			LOG("COMPILE ERROR: " + e);
+			if (e instanceof Array) {
+				LOG("COMPILE ERROR: " + JSON.stringify(e));
+			} else {
+				throw e;
+			}
 		}
 	}
 
 	function set_position(pos) {
-		if (deepeq(position, pos)) return;
-		position = pos;
+		if (deepeq(cursor_position, pos)) return;
+		cursor_position = pos;
 		rerun();
 	}
 
 	function set_entrypoint_at_position(pos) {
-		//LOG("LOCATE!" + JSON.stringify(pos));
 		const fp = filesys.uri_to_full_path(pos.uri);
 		root = path.dirname(fp);
 		entrypoint_word = null;
 		const cc = mk_compiler();
 		const filename = path.basename(fp);
 		entrypoint_filename = filename;
-		const tokens = cc.tokenize_file(filename);
+		const state = cc.tokenize_file(filename);
 		//LOG("TOK!" + JSON.stringify(tokens));
-		for (const tok of tokens) {
-			const tokpos = tok[0];
-			if (tokpos[0] !== filename) continue;
-			if (tokpos[1] !== (pos.line-1)) continue;
-			if (!(tokpos[2] <= pos.column && pos.column <= tokpos[3])) continue;
-			if (tok[1] !== "BEGIN_WORD") continue;
-			entrypoint_word = tok[2];
-			break;
+		const i = cc.find_position(state.positions, filename, pos.line-1, pos.column);
+		if (i !== -1 && state.tokens[i][0] === "BEGIN_WORD") {
+			entrypoint_word = state.tokens[i][1];
 		}
 		rerun();
 	}
@@ -406,6 +427,7 @@ function process_client_message(msg) {
 		const uri = p.textDocument.uri;
 		filesys.shadow_forget(uri);
 	} else if (m === "textDocument/didSave") {
+		const uri = p.textDocument.uri;
 		filesys.shadow_forget(uri);
 		vm.rerun();
 	} else if (m === "textDocument/semanticTokens/full") {
