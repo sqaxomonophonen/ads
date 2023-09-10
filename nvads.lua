@@ -13,7 +13,7 @@ function ADS()
 
 	local oldpos = nil
 	local timer = uv.new_timer()
-	timer:start(1000, 50, vim.schedule_wrap(function()
+	timer:start(1000, 20, vim.schedule_wrap(function()
 		local pos = get_pos()
 		if oldpos == nil or pos.line ~= oldpos.line or pos.column ~= old_pos.column or pos.uri ~= old_pos.uri then
 			old_pos = pos

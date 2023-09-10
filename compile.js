@@ -46,39 +46,34 @@ TIME("4st test", () => {
 		const test_prg = o.trace_program_debug((depth,name) => compiler.is_test_word(name));
 		//console.log(JSON.stringify(test_prg));
 
-		for (const word_index of test_prg.export_word_indices) {
-			const word_name = test_prg.export_word_names[word_index];
+		for (let xi = 0; xi < test_prg.export_word_indices.length; xi++) {
+			const word_name = test_prg.export_word_names[xi];
 			try {
 				const MAX_INSTRUCTIONS = 1e8;
-				let vm_state = [
-					word_index, 0,
-					[], [], [],
-					MAX_INSTRUCTIONS,
-					new WeakSet(),
-				];
+				let vm_state = test_prg.new_state();
+				vm_state.set_iteration_counter(MAX_INSTRUCTIONS);
+				vm_state.set_pc_to_export_word_index(xi);
 
-				let vop = test_prg.vm_state_ops(vm_state);
-				while (vop.can_run()) {
+				while (vm_state.can_run()) {
 					vm_state = test_prg.vm(test_prg.vm_words, vm_state);
-					vop = test_prg.vm_state_ops(vm_state);
-					if (!vop.did_exit()) {
-						const pos = vop.get_position_human();
-						if (vop.broke_at_assertion()) {
+					if (!vm_state.did_exit()) {
+						const pos = vm_state.get_position_human();
+						if (vm_state.broke_at_assertion()) {
 							throw new TestError("ASSERTION FAILED at " + pos);
-						} else if (vop.broke_at_breakpoint()) {
+						} else if (vm_state.broke_at_breakpoint()) {
 							// OK: some tests break
 						} else {
 							throw new TestError("unhandled exit at " + pos);
 						}
 					}
 				}
-				if (!vop.did_exit()) {
-					throw new TestError("not a clean exit at " + vop.get_position_human());
+				if (!vm_state.did_exit()) {
+					throw new TestError("not a clean exit at " + vm_state.get_position_human());
 				}
 
-				const n_ops = MAX_INSTRUCTIONS - vop.get_iteration_counter();
-				const stack = vop.get_stack();
-				const rstack = vop.get_rstack();
+				const n_ops = MAX_INSTRUCTIONS - vm_state.get_iteration_counter();
+				const stack = vm_state.get_stack();
+				const rstack = vm_state.get_rstack();
 				if (stack.length !== 0 || rstack.length !== 0)  throw new TestError("unclean stack after test: " + JSON.stringify([stack,"/R",rstack]));
 				console.log(OK("TEST " + word_name + " OK (" + n_ops + "op)"));
 			} catch (err) {

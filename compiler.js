@@ -607,12 +607,12 @@ function new_compiler(read_file_fn) {
 			}
 
 			const export_word_indices = [];
-			const export_word_names = {};
+			const export_word_names = [];
 			for (let i = 0; i < prg_words.length; i++) {
 				const w = prg_words[i];
 				if (!w.do_export) continue;
 				export_word_indices.push(i);
-				export_word_names[i] = w.name;
+				export_word_names.push(w.name);
 			}
 
 			let vm, vm_src;
@@ -762,7 +762,7 @@ function new_compiler(read_file_fn) {
 				op.shift();
 			}
 
-			function vm_state_ops(vm_state) {
+			function bless(vm_state) {
 				const PC0=0, PC1=1, STACK=2, RSTACK=3, GLOBALS=4, ITERATION_COUNT=5, GRAPH_TAG_SET=6;
 				const pc0 = () => vm_state[PC0];
 				const pc1 = () => vm_state[PC1];
@@ -770,8 +770,10 @@ function new_compiler(read_file_fn) {
 				const get_op = () => vm_words[pc0()][pc1()-1];
 				const get_position = vm_state => dbg_words[pc0()][pc1()-1];
 				return {
+					raw: vm_state,
 					can_run: () => vm_state[PC0] >= 0 && vm_state[ITERATION_COUNT] > 0,
-					get_iteration_counter: () => vm_state[ITERATION_COUNT],
+					get_iteration_counter:  () => vm_state[ITERATION_COUNT],
+					set_iteration_counter: (n) => vm_state[ITERATION_COUNT] = n,
 					get_stack: () => vm_state[STACK],
 					get_rstack: () => vm_state[RSTACK],
 					did_exit: () => vm_state[PC0] < 0,
@@ -785,11 +787,32 @@ function new_compiler(read_file_fn) {
 					},
 					set_breakpoint:    (delta) => set_breakpoint(pc(delta)),
 					remove_breakpoint: (delta) => remove_breakpoint(pc(delta)),
+					rewind: (n) => { vm_state[PC1] -= n; },
+					set_pc_to_export_word_index: (i) => {
+						vm_state[PC0] = export_word_indices[i];
+						vm_state[PC1] = 0;
+					},
 				};
 			}
 
+			function new_state() {
+				return bless([
+					-1, 0,
+					[], [], [],
+					1,
+					new WeakSet(),
+				])
+			}
+
+			function vm_wrapper(vm_words, vm_state) {
+				if (!vm_state.raw) throw new Error("XXX");
+				return bless(vm(vm_words, vm_state.raw));
+			}
+
 			return {
-				vm,
+				raw_vm: vm,
+				new_state,
+				vm: vm_wrapper,
 				vm_words,
 				dbg_words,
 				export_word_indices,
@@ -797,7 +820,6 @@ function new_compiler(read_file_fn) {
 				vm_src,
 				set_breakpoint,
 				remove_breakpoint,
-				vm_state_ops,
 			};
 		}
 

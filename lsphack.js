@@ -258,12 +258,9 @@ const vm = (() => {
 				LOG("expected 1 exported word, got " + prg.export_word_indices.length);
 				return;
 			}
-			let vm_state = [
-				prg.export_word_indices[0], 0,
-				[], [], [],
-				max_iterations,
-				new WeakSet(),
-			];
+			let vm_state = prg.new_state();
+			vm_state.set_pc_to_export_word_index(0);
+			vm_state.set_iteration_counter(max_iterations);
 
 			let brkpos = null;
 			if (cursor_position != null) {
@@ -280,33 +277,53 @@ const vm = (() => {
 
 			let exited_normally = false;
 			let iteration_budget_exceeded = false;
+			let assertion_failed = false;
 			let entries = 0;
-			let vop = prg.vm_state_ops(vm_state);
 			let passes_left = n_passes;
-			while (passes_left > 0) {
-				if (vop.did_exit()) {
+			while (passes_left > 0 && vm_state.can_run()) {
+				if (vm_state.did_exit()) {
 					exited_normally = true;
 					break;
 				}
 				entries++;
 				vm_state = prg.vm(prg.vm_words, vm_state);
-				vop = prg.vm_state_ops(vm_state);
-				if (!vop.did_exit()) {
-					if (vop.broke_at_breakpoint()) {
-						LOG("BRK " + JSON.stringify(vop.pc()) + " vs " + JSON.stringify(brkpos) +  " at " + vop.get_position_human());
-						passes_left--;
-					} else if (vop.broke_at_assertion()) {
+				if (!vm_state.did_exit()) {
+					if (vm_state.broke_at_breakpoint()) {
+						if (deepeq(vm_state.pc(-1), brkpos)) {
+							LOG("PASS " + entries + " at pc=" + JSON.stringify(vm_state.pc(-1)) + " (brkpos=" + JSON.stringify(brkpos) +  ") at " + vm_state.get_position_human());
+							passes_left--;
+							if (passes_left > 0) {
+								// "old school" remove-breakpoint => single-step => reset-breakpoint => continue
+								// this is because adhoc breakpoints are implemented by overwriting
+								// instructions with brk instructions. this is much preferable to
+								// rstack corruption bugs (if brk was instead inserted/deleted)
+								// and VM bloat (gotta keep it small)
+								vm_state.remove_breakpoint(-1);
+								vm_state.rewind(1);
+								const tmp = vm_state.get_iteration_counter();
+								vm_state.set_iteration_counter(1); // prepare single-step
+								vm_state = prg.vm(prg.vm_words, vm_state); // single-step
+								vm_state.set_iteration_counter(tmp-1); // restore iteration counter
+								vm_state.set_breakpoint(-1);
+							}
+						} else {
+							// in-code breakpoint?
+							LOG("BRK at " + JSON.stringify(vm_state.pc(-1)) +  " at " + vm_state.get_position_human());
+						}
+					} else if (vm_state.broke_at_assertion()) {
+						assertion_failed = true;
 						break;
 					} else {
+						throw new Error("unhandled break type");
 					}
 				}
-				if (vop.get_iteration_counter() === 0) {
+				if (vm_state.get_iteration_counter() === 0) {
 					iteration_budget_exceeded = true;
 					break;
 				}
 			}
 			LOG("stack:"+JSON.stringify({
-				stack: vop.get_stack(),
+				stack: vm_state.get_stack(),
 				exited_normally,
 				iteration_budget_exceeded,
 				entries,
@@ -343,8 +360,9 @@ const vm = (() => {
 	}
 
 	function add_to_n_passes(d) {
-		n_passes += d;
-		rerun();
+		const old_n_passes = n_passes;
+		n_passes = Math.max(1, n_passes + d);
+		if (n_passes !== old_n_passes) rerun();
 	}
 
 	return {
