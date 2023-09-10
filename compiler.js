@@ -3,23 +3,25 @@ function new_compiler(read_file_fn) {
 	const WORD="WORD", ID="ID", NUMBER="NUMBER", CALL="CALL", OP1="OP1",
 	INFIX="INFIX", PREFIX="PREFIX", MATH1="MATH1", USER_WORD="USER_WORD";
 
+	const FLAG_KEYWORD = 1<<0;
+
 	const ISA = [
 		// NOTE: ISA order must match vm4stub.js order
 
 		// these ops are always in the vm (ID=STATIC)
 
-		[   WORD    , "return"    ,  ID     ,  "STATIC"      ],
-		[   WORD    , "if"        ,  ID     ,  "STATIC"      ],
-		[   WORD    , "else"      ,  ID     ,  "STATIC"      ],
-		[   WORD    , "endif"     ,  ID     ,  "STATIC"      ],
+		[   WORD    , "return"    ,  ID     ,  "STATIC"      , FLAG_KEYWORD ],
+		[   WORD    , "if"        ,  ID     ,  "STATIC"      , FLAG_KEYWORD ],
+		[   WORD    , "else"      ,  ID     ,  "STATIC"      , FLAG_KEYWORD ],
+		[   WORD    , "endif"     ,  ID     ,  "STATIC"      , FLAG_KEYWORD ],
 
 		// the remaining ops can be compiled out of the VM if unused:
 
 		[   NUMBER  ,             ,  ID     ,  "PUSH_IMM"    ],
-		[   WORD    , "times"     ,  ID     ,  "TIMES_LOOP"  ],
-		[   WORD    , "loop"      ,  ID     ,  "TIMES_LOOP"  ],
-		[   WORD    , "do"        ,  ID     ,  "DO_WHILE"    ],
-		[   WORD    , "while"     ,  ID     ,  "DO_WHILE"    ],
+		[   WORD    , "times"     ,  ID     ,  "TIMES_LOOP"  , FLAG_KEYWORD ],
+		[   WORD    , "loop"      ,  ID     ,  "TIMES_LOOP"  , FLAG_KEYWORD ],
+		[   WORD    , "do"        ,  ID     ,  "DO_WHILE"    , FLAG_KEYWORD ],
+		[   WORD    , "while"     ,  ID     ,  "DO_WHILE"    , FLAG_KEYWORD ],
 		[   CALL    ,             ,  ID     ,  "CALL_IMM"    ],
 		[   WORD    , "call"      ,  ID     ,  "CALL_POP"    ],
 		[   WORD    , "pick"      ,  ID     ,  "PICK"        ],
@@ -99,12 +101,15 @@ function new_compiler(read_file_fn) {
 	];
 
 	let builtin_word_ii_map = {}, one_char_op_ii_map = {}, number_ii, call_ii;
+	const keyword_set = {};
 	for (let i = 0; i < ISA.length; i++) {
-		const [ typ, val ] = ISA[i];
+		const ise = ISA[i];
+		const [ typ, val ] = ise;
 		if (typ === WORD)   builtin_word_ii_map[val] = i;
 		if (typ === OP1)    one_char_op_ii_map[val]  = i;
 		if (typ === NUMBER) number_ii = i;
 		if (typ === CALL)   call_ii = i;
+		if (ise[4] & FLAG_KEYWORD) keyword_set[val] = 1;
 	}
 	if (number_ii === undefined || call_ii === undefined) throw new Error("XXX");
 
@@ -440,7 +445,7 @@ function new_compiler(read_file_fn) {
 
 		const vm4stub_lines = read_file_fn("vm4stub.js").split("\n");
 
-		function trace_program(match_fn) {
+		function trace_program(match_fn, is_debug) {
 			const lift_set = new Set();
 			let prg_words = [];
 			function uplift_word(word_stack, inline_ops) {
@@ -589,7 +594,7 @@ function new_compiler(read_file_fn) {
 				let op_idx = 0;
 				for (let ii = 0; ii < ISA.length; ii++) {
 					const ise = ISA[ii];
-					const keep = (ise[2] === ID && (ise[3] === "STATIC" || required_vm_ids[ise[3]])) || required_vm_other_ops[ii];
+					const keep = (ise[2] === ID && (ise[3] === "STATIC" || (is_debug && ise[3] === "DEBUG") || required_vm_ids[ise[3]])) || required_vm_other_ops[ii];
 					if (keep) op_remap[ii] = op_idx++;
 				}
 			}
@@ -705,6 +710,84 @@ function new_compiler(read_file_fn) {
 			if (vm_words.length !== dbg_words.length) throw new Error("vm/dbg mismatch");
 			for (let i = 0; i < vm_words.length; i++) if (vm_words[i].length !== dbg_words[i].length) throw new Error("vm/dbg mismatch");
 
+			function get_op(word_op_position) {
+				const [ wi, oi ] = word_op_position;
+				if (!(0 <= wi && wi < vm_words.length)) throw new Error("invalid word index: " + wi);
+				const ops = vm_words[wi];
+				if (!(0 <= oi && oi < ops.length)) throw new Error("invalid op index in " + JSON.stringify([wi,oi]));
+				return vm_words[wi][oi]
+			}
+
+			const opresolv = (() => {
+				let cache = {};
+				return (typ,op) => {
+					const key = JSON.stringify([typ,op]);
+					if (cache[key] === undefined) {
+						let opcode;
+						for (let i = 0; i < ISA.length; i++) {
+							const ise = ISA[i];
+							if (ise[0] !== typ || ise[1] !== op) continue;
+							opcode = op_remap[i];
+							if (opcode === undefined) throw new Error("no mapping for " + key);
+							break;
+						}
+						if (opcode === undefined) throw new Error("not found: " + key);
+						cache[key] = opcode;
+					}
+					return cache[key];
+				};
+			})();
+
+			const brk = () => opresolv(WORD, "brk");
+
+			// temporary breakpoints abuse that ops are tuples, so
+			// [sqrt] becomes [brk, sqrt], and [PUSH_IMM, 42]
+			// becomes [brk, PUSH_IMM, 42]. this makes it easy to
+			// disable the breakpoint by .slice(1)'ing it
+
+			function is_temporary_breakpoint(word_op_position) {
+				const op = get_op(word_op_position);
+				return op.length >= 2 && op[0] === brk();
+			}
+
+			function set_breakpoint(word_op_position) {
+				if (is_temporary_breakpoint(word_op_position)) return;
+				const op = get_op(word_op_position);
+				op.unshift(brk());
+			}
+
+			function remove_breakpoint(word_op_position) {
+				if (!is_temporary_breakpoint(word_op_position)) return;
+				const op = get_op(word_op_position);
+				op.shift();
+			}
+
+			function vm_state_ops(vm_state) {
+				const PC0=0, PC1=1, STACK=2, RSTACK=3, GLOBALS=4, ITERATION_COUNT=5, GRAPH_TAG_SET=6;
+				const pc0 = () => vm_state[PC0];
+				const pc1 = () => vm_state[PC1];
+				const pc = (delta) => [pc0(), pc1()+(delta|0)];
+				const get_op = () => vm_words[pc0()][pc1()-1];
+				const get_position = vm_state => dbg_words[pc0()][pc1()-1];
+				return {
+					can_run: () => vm_state[PC0] >= 0 && vm_state[ITERATION_COUNT] > 0,
+					get_iteration_counter: () => vm_state[ITERATION_COUNT],
+					get_stack: () => vm_state[STACK],
+					get_rstack: () => vm_state[RSTACK],
+					did_exit: () => vm_state[PC0] < 0,
+					broke_at_assertion:   () => get_op()[0] === opresolv(WORD, "assert"),
+					broke_at_breakpoint:  () => get_op()[0] === brk(),
+					get_position,
+					pc,
+					get_position_human: () => {
+						const pos = get_position(vm_state);
+						return pos[0] + ":" + (1+pos[1]) + ":" + (1+pos[2]);
+					},
+					set_breakpoint:    (delta) => set_breakpoint(pc(delta)),
+					remove_breakpoint: (delta) => remove_breakpoint(pc(delta)),
+				};
+			}
+
 			return {
 				vm,
 				vm_words,
@@ -712,16 +795,21 @@ function new_compiler(read_file_fn) {
 				export_word_indices,
 				export_word_names,
 				vm_src,
+				set_breakpoint,
+				remove_breakpoint,
+				vm_state_ops,
 			};
 		}
 
 		return {
-			trace_program,
+			trace_program_debug:   match_fn => trace_program(match_fn, true),
+			trace_program_release: match_fn => trace_program(match_fn, false),
 		};
 	};
 
 
 	return {
+		keyword_set,
 		tokenize_line,
 		tokenize_lines,
 		tokenize_string,

@@ -38,7 +38,7 @@ const toktyp = (() => {
 		'function',
 		'method',
 		'macro',
-		//'keyword',
+		'keyword',
 		//'modifier',
 		'comment',
 		//'string',
@@ -130,7 +130,8 @@ const filesys = (() => {
 })();
 
 function lsp_tokenize(uri) {
-	const state = create_compiler(null).tokenize_string(uri, filesys.read_uri(uri));
+	const cc = create_compiler(null);
+	const state = cc.tokenize_string(uri, filesys.read_uri(uri));
 
 	let r = [];
 	let prev_pos = [null, 0, 0, null];
@@ -158,8 +159,12 @@ function lsp_tokenize(uri) {
 			break;
 
 		case "BUILTIN_WORD":
-			typ = "variable";
-			mod = [ "readonly" ];
+			if (cc.keyword_set[token[1]]) {
+				typ = "keyword";
+			} else {
+				typ = "variable";
+				mod = [ "readonly" ];
+			}
 			break;
 
 		case "USER_WORD":
@@ -229,7 +234,7 @@ function deepeq(a,b) {
 }
 
 const vm = (() => {
-	let n_passes = 0;
+	let n_passes = 1;
 	//let total_passes; // XXX?
 	let max_iterations = 250e3;
 	let cursor_position = null;
@@ -248,7 +253,7 @@ const vm = (() => {
 		try {
 			const cc = mk_compiler();
 			const cu = cc.compile(entrypoint_filename);
-			const prg = cu.trace_program((depth,name) => name === entrypoint_word);
+			const prg = cu.trace_program_debug((depth,name) => name === entrypoint_word);
 			if (prg.export_word_indices.length !== 1) {
 				LOG("expected 1 exported word, got " + prg.export_word_indices.length);
 				return;
@@ -264,23 +269,48 @@ const vm = (() => {
 			if (cursor_position != null) {
 				const curpos = [
 					path.basename(filesys.uri_to_full_path(cursor_position.uri)),
-					cursor_position.line,
+					cursor_position.line - 1,
 					cursor_position.column,
 				];
 				brkpos = cc.find_2lvl_position_at_or_after(prg.dbg_words, curpos[0], curpos[1], curpos[2]);
-				//if (brkpos) LOG("brkpos " + JSON.stringify(brkpos) + " at " + JSON.stringify(curpos));
+				if (brkpos) {
+					prg.set_breakpoint(brkpos);
+				}
 			}
-			//let brkpos = cc.find_position(prg.dbg_words, filesys.uri_to_full_path(cursor_position.uri), cursor_position.line, cursor_position.column);
 
+			let exited_normally = false;
 			let iteration_budget_exceeded = false;
-			for (let i = 0; i <= n_passes; i++) {
+			let entries = 0;
+			let vop = prg.vm_state_ops(vm_state);
+			let passes_left = n_passes;
+			while (passes_left > 0) {
+				if (vop.did_exit()) {
+					exited_normally = true;
+					break;
+				}
+				entries++;
 				vm_state = prg.vm(prg.vm_words, vm_state);
-				if (vm_state[5] === 0) {
+				vop = prg.vm_state_ops(vm_state);
+				if (!vop.did_exit()) {
+					if (vop.broke_at_breakpoint()) {
+						LOG("BRK " + JSON.stringify(vop.pc()) + " vs " + JSON.stringify(brkpos) +  " at " + vop.get_position_human());
+						passes_left--;
+					} else if (vop.broke_at_assertion()) {
+						break;
+					} else {
+					}
+				}
+				if (vop.get_iteration_counter() === 0) {
 					iteration_budget_exceeded = true;
 					break;
 				}
 			}
-			LOG("stack:"+JSON.stringify(vm_state[2]));
+			LOG("stack:"+JSON.stringify({
+				stack: vop.get_stack(),
+				exited_normally,
+				iteration_budget_exceeded,
+				entries,
+			}));
 		} catch(e) {
 			if (e instanceof Array) {
 				LOG("COMPILE ERROR: " + JSON.stringify(e));

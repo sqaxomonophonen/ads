@@ -49,7 +49,7 @@
 		PICK = n => stack[stack.length-n-1],
 		TOP  = _ => PICK(0),
 
-		advance = __tup => [current_opcode, current_oparg] = words[pc0][pc1++] || [0], // get next instruction
+		advance = _ => [current_opcode, current_oparg] = words[pc0][pc1++] || [0], // get next instruction
 		// NOTE: "|| [0]" injects implicit return ops past end of
 		// instruction list (because ISA[0] is an explicit return op)
 
@@ -180,13 +180,14 @@
 
 	/*ST4{DEBUG*/
 	push_op(
-		_ => { if (!POP()) throw new Error("ASSERTION FAILED"); }, // assert
+		_ => !POP(), // assert
 		_ => { console.log("STACK", stack, JSON.stringify(stack), "/R", rstack); }, // dump
-		_ => 1, // brk
+		_ => true, // brk
 		_ => (graph_tag_set.add(TOP()),0) // _DTGRAPH
 	);
 	/*ST4}DEBUG*/
 
 	for (;advance(),(max_instructions--) && !ops[current_opcode]();) {}   // XXX(size) skip max_instructions stuff in release
-	return [pc0,pc1,stack,rstack,globals,max_instructions,graph_tag_set]; // XXX(size) probably only return stack or stack[0] in release
+
+	return [pc0,pc1,stack,rstack,globals,max_instructions,graph_tag_set]; // XXX(size) probably return stack or stack[0] in release?
 }

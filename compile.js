@@ -37,11 +37,13 @@ const NORM  =  ESC+"[0m";
 const FAIL  =  txt => ESC+"[1;93;41m"+txt+NORM; // bold; fg=bright yellow; bg=red
 const OK    =  txt => ESC+"[1;92m"+txt+NORM;    // bold; fg=bright green
 
+class TestError extends Error {}
+
 TIME("4st test", () => {
 	for (let file of ["selftest.4st"]) {
 		const o = compiler.compile(file);
 
-		const test_prg = o.trace_program((depth,name) => compiler.is_test_word(name));
+		const test_prg = o.trace_program_debug((depth,name) => compiler.is_test_word(name));
 		//console.log(JSON.stringify(test_prg));
 
 		for (const word_index of test_prg.export_word_indices) {
@@ -54,30 +56,41 @@ TIME("4st test", () => {
 					MAX_INSTRUCTIONS,
 					new WeakSet(),
 				];
-				while (vm_state[0] >= 0) {
+
+				let vop = test_prg.vm_state_ops(vm_state);
+				while (vop.can_run()) {
 					vm_state = test_prg.vm(test_prg.vm_words, vm_state);
-					/*
-					const [ pc0, pc1, stack, rstack, globals, counter ] = vm_state;
-					if (pc0 >= 0) {
-						console.log("breakpoint at " + JSON.stringify(test_prg.dbg_words[pc0][pc1-1]));
-						console.log("STACK", stack);
-						console.log("RSTACK", rstack);
+					vop = test_prg.vm_state_ops(vm_state);
+					if (!vop.did_exit()) {
+						const pos = vop.get_position_human();
+						if (vop.broke_at_assertion()) {
+							throw new TestError("ASSERTION FAILED at " + pos);
+						} else if (vop.broke_at_breakpoint()) {
+							// OK: some tests break
+						} else {
+							throw new TestError("unhandled exit at " + pos);
+						}
 					}
-					*/
+				}
+				if (!vop.did_exit()) {
+					throw new TestError("not a clean exit at " + vop.get_position_human());
 				}
 
-				const [ pc0, pc1, stack, rstack, globals, counter, graph_tag_set ] = vm_state;
-				//console.log([pc0,pc1]);
-				//console.log(globals);
-				const n_ops = MAX_INSTRUCTIONS - counter;
-				if (stack.length !== 0 || rstack.length !== 0)  throw new Error("unclean stack after test: " + JSON.stringify([stack,"/R",rstack]));
+				const n_ops = MAX_INSTRUCTIONS - vop.get_iteration_counter();
+				const stack = vop.get_stack();
+				const rstack = vop.get_rstack();
+				if (stack.length !== 0 || rstack.length !== 0)  throw new TestError("unclean stack after test: " + JSON.stringify([stack,"/R",rstack]));
 				console.log(OK("TEST " + word_name + " OK (" + n_ops + "op)"));
 			} catch (err) {
-				console.log(FAIL("TEST ERROR in :" + word_name + " : " + err));
+				if (err instanceof TestError) {
+					console.log(FAIL("TEST ERROR in :" + word_name + " : " + err));
+				} else {
+					throw err;
+				}
 			}
 		}
 
-		//const main_prg = trace_program((depth,name) => depth === 0 && is_main_word(name));
+		//const main_prg = (true ? o.trace_program_debug : o.trace_program_release)((depth,name) => depth === 0 && is_main_word(name));
 		//console.log(main_prg);
 	}
 });
