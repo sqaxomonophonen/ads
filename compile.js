@@ -51,6 +51,12 @@ TIME("4st test", () => {
 			try {
 				const MAX_INSTRUCTIONS = 1e8;
 				let vm_state = test_prg.new_state();
+				vm_state.set_dump_callback((vm_state) => {
+					const stack = vm_state.get_tagged_stack();
+					const rstack = vm_state.get_rstack();
+					console.log("STACK", stack, "/R", rstack);
+
+				});
 				vm_state.set_iteration_counter(MAX_INSTRUCTIONS);
 				vm_state.set_pc_to_export_word_index(xi);
 

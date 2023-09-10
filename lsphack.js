@@ -311,8 +311,10 @@ const vm = (() => {
 					break;
 				}
 			}
+
+			const stack = JSON.stringify(vm_state.get_tagged_stack());
 			LOG("stack:"+JSON.stringify({
-				stack: vm_state.get_stack(),
+				stack,
 				exited_normally,
 				iteration_budget_exceeded,
 				entries,

@@ -8,7 +8,7 @@
 //    [],                       // rstack (return/loop stack)
 //    [],                       // globals (accessed with getglobal/setglobal)
 //    1e7,                      // max op count; MUST be >0
-//    new WeakSet(),            // graph tag set (arrays tagged with _DTGRAPH)
+//    new WeakMap(),            // value type tag map (see e.g. _DTGRAPH)
 // ]
 // the function returns state in same format (so the VM can be re-entered after
 // execution breaks). the "max op count" (index 5) is decremented for each op
@@ -28,7 +28,7 @@
 
 // comments in the format of "/*ST4...*/" are directives for compiler.js
 
-(words, state) => {
+(words, state, dump_callback) => { // XXX(size) "dump_callback" not useful in release
 	let
 		[
 			// see state explanation above
@@ -36,8 +36,8 @@
 			stack,
 			rstack,
 			globals,
-			max_instructions, // XXX(size) this is only required for "live coding safety" and step debugging
-			graph_tag_set,    // XXX(size) a debug thing
+			max_instructions,    // XXX(size) this is only required for "live coding safety" and step debugging
+			value_type_tag_map,  // XXX(size) a debug thing
 		] = state,
 
 		current_opcode,
@@ -178,16 +178,18 @@
 	/*ST4:arrjoin*/    push_op((__a,__b) => { [__a,__b] = s(2); u([...__a, ...__b]); });
 	/*ST4:arrsplit*/   push_op((__pivot, __xs) => { __pivot = POP(); __xs = POP(); u(__xs.slice(0,__pivot)); u(__xs.slice(__pivot)); });
 
+	const bundle_state = _ => [pc0,pc1,stack,rstack,globals,max_instructions,value_type_tag_map] // XXX(size) not required in release
+
 	/*ST4{DEBUG*/
 	push_op(
 		_ => !POP(), // assert
-		_ => { console.log("STACK", stack, JSON.stringify(stack), "/R", rstack); }, // dump
+		_ => (dump_callback(bundle_state()),0),
 		_ => true, // brk
-		_ => (graph_tag_set.add(TOP()),0) // _DTGRAPH
+		_ => (value_type_tag_map.set(TOP(),1),0) // _DTGRAPH
 	);
 	/*ST4}DEBUG*/
 
 	for (;advance(),(max_instructions--) && !ops[current_opcode]();) {}   // XXX(size) skip max_instructions stuff in release
 
-	return [pc0,pc1,stack,rstack,globals,max_instructions,graph_tag_set]; // XXX(size) probably return stack or stack[0] in release?
+	return bundle_state(); // XXX(size) probably return stack or stack[0] in release?
 }

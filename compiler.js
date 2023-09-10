@@ -588,7 +588,6 @@ function new_compiler(read_file_fn) {
 			}
 
 			// compact ISA by removing unused ops
-
 			let op_remap = {};
 			{
 				let op_idx = 0;
@@ -763,7 +762,8 @@ function new_compiler(read_file_fn) {
 			}
 
 			function bless(raw) {
-				const PC0=0, PC1=1, STACK=2, RSTACK=3, GLOBALS=4, ITERATION_COUNT=5, GRAPH_TAG_SET=6;
+				let self;
+				const PC0=0, PC1=1, STACK=2, RSTACK=3, GLOBALS=4, ITERATION_COUNT=5, VALUE_TYPE_TAG_MAP=6;
 				const pc0 = () => raw[PC0];
 				const pc1 = () => raw[PC1];
 				const pc = (delta) => [pc0(), pc1()+(delta|0)];
@@ -771,6 +771,7 @@ function new_compiler(read_file_fn) {
 				const get_position = () => dbg_words[pc0()][pc1()-1];
 				const get_iteration_counter =  () => raw[ITERATION_COUNT];
 				const set_iteration_counter = (n) => raw[ITERATION_COUNT] = n;
+				let dump_callback_fn;
 				function rewind(n) {
 					raw[PC1] -= n;
 				}
@@ -783,7 +784,10 @@ function new_compiler(read_file_fn) {
 				}
 
 				function run() {
-					raw = vm(vm_words, raw);
+					raw = vm(vm_words, raw, (_raw) => {
+						raw = _raw;
+						dump_callback_fn(self);
+					});
 				}
 
 				function continue_after_user_breakpoint() {
@@ -802,13 +806,33 @@ function new_compiler(read_file_fn) {
 					set_breakpoint_at(brkpos); // restore breakpoint
 				}
 
-				return {
+				const get_stack  = () => raw[STACK];
+				const get_rstack = () => raw[RSTACK];
+
+				function get_tagged_stack() {
+					function maprec(x) {
+						const wm = raw[VALUE_TYPE_TAG_MAP];
+						if (x instanceof Array) {
+							const y = x.map(maprec);
+							return wm.has(x) ? { t: wm.get(x), x:y } : y;
+						} else {
+							return x;
+						}
+					}
+					return maprec(get_stack());
+				}
+
+				function set_dump_callback(fn) {
+					dump_callback_fn = fn;
+				}
+
+				self = {
 					get_raw: () => raw,
 					can_run: () => raw[PC0] >= 0 && raw[ITERATION_COUNT] > 0,
 					get_iteration_counter,
 					set_iteration_counter,
-					get_stack: () => raw[STACK],
-					get_rstack: () => raw[RSTACK],
+					get_stack,
+					get_rstack,
 					did_exit: () => raw[PC0] < 0,
 					broke_at_assertion:   () => get_op()[0] === opresolv(WORD, "assert"),
 					broke_at_breakpoint:  () => get_op()[0] === brk(),
@@ -826,7 +850,10 @@ function new_compiler(read_file_fn) {
 					},
 					continue_after_user_breakpoint,
 					run,
+					get_tagged_stack,
+					set_dump_callback,
 				};
+				return self;
 			}
 
 			function new_state() {
@@ -834,7 +861,7 @@ function new_compiler(read_file_fn) {
 					-1, 0,
 					[], [], [],
 					1,
-					new WeakSet(),
+					new WeakMap(),
 				])
 			}
 
