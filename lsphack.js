@@ -233,15 +233,31 @@ function deepeq(a,b) {
 	}
 }
 
+const poll_state = (() => {
+	let serial = 1;
+	let packed_state;
+
+	function push(new_state) {
+		// ima profesionl web devlopr
+		if (packed_state === JSON.stringify([serial, new_state])) return;
+		packed_state = JSON.stringify([++serial, new_state]);
+	}
+
+	return {
+		push,
+		pack: () => packed_state,
+		get_serial: () => serial,
+	};
+})();
+
 const vm = (() => {
 	let n_passes = 1;
 	//let total_passes; // XXX?
 	let max_iterations = 250e3;
 	let cursor_position = null;
 	let vm = null;
-	let serial = 1;
 	let root;
-	let entrypoint_filename;
+	let entrypoint_filename = null;
 	let entrypoint_word = null;
 
 	function mk_compiler() {
@@ -290,7 +306,7 @@ const vm = (() => {
 				if (!vm_state.did_exit()) {
 					if (vm_state.broke_at_breakpoint()) {
 						if (deepeq(vm_state.pc(-1), brkpos)) {
-							LOG("PASS " + entries + " at pc=" + JSON.stringify(vm_state.pc(-1)) + " (brkpos=" + JSON.stringify(brkpos) +  ") at " + vm_state.get_position_human());
+							//LOG("PASS " + entries + " at pc=" + JSON.stringify(vm_state.pc(-1)) + " (brkpos=" + JSON.stringify(brkpos) +  ") at " + vm_state.get_position_human());
 							passes_left--;
 							if (passes_left > 0) {
 								vm_state.continue_after_user_breakpoint();
@@ -312,13 +328,22 @@ const vm = (() => {
 				}
 			}
 
-			const stack = JSON.stringify(vm_state.get_tagged_stack());
+			poll_state.push([
+				["n_passes", [n_passes - passes_left, n_passes]],
+				["max_iterations", max_iterations],
+				["entrypoint_filename", entrypoint_filename],
+				["entrypoint_word", entrypoint_word],
+				["stack", vm_state.get_tagged_stack()],
+			]);
+
+			/*
 			LOG("stack:"+JSON.stringify({
-				stack,
+				stack:
 				exited_normally,
 				iteration_budget_exceeded,
 				entries,
 			}));
+			*/
 		} catch(e) {
 			if (e instanceof Array) {
 				LOG("COMPILE ERROR: " + JSON.stringify(e));
@@ -361,7 +386,6 @@ const vm = (() => {
 		add_to_n_passes,
 		set_entrypoint_at_position,
 		set_position,
-		get_serial: ()=>serial,
 	};
 })();
 
@@ -543,8 +567,8 @@ const pipe = (stdin, argv) => new Promise((resolve,reject) => {
 function long_poll(seen_serial, callback) {
 	const t0 = Date.now();
 	function pollfn() {
-		if (vm.get_serial() > seen_serial) {
-			callback(poll_state);
+		if (poll_state.get_serial() > seen_serial) {
+			callback(poll_state.pack());
 		} else {
 			const dt = Date.now() - t0;
 			if (dt < 4444) {
@@ -624,7 +648,7 @@ http.createServer((req, res) => {
 				read_request_body().then(body => {
 					body = JSON.parse(body);
 					long_poll(body.seen_serial, (o) => {
-						serve_json(o);
+						serve_raw_json(o === null ? "null" : o);
 					});
 				});
 			} else {

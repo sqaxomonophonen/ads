@@ -18,16 +18,17 @@ window.onload = () => {
 		fetch("poll", {
 			method: "POST",
 			body: JSON.stringify({
-				seen_serial,
+				seen_serial: seen_serial,
 			}),
 		}).then(x => x.json().then(x => {
 			if (x) {
-				seen_serial = x.serial;
-				document.getElementById("cursor").innerText = JSON.stringify(x.position);
+				seen_serial = x[0];
+				document.getElementById("debug").innerText = JSON.stringify(x[1]);
 			}
 			loop();
 		})).catch(e => {
-			document.getElementById("cursor").innerText = "DISCONNECTED"
+			document.getElementById("debug").innerText = "DISCONNECTED"
+			seen_serial = 0;
 			setTimeout(loop, 1000);
 		});
 	}
@@ -38,6 +39,6 @@ window.onload = () => {
 </head>
 
 <body>
-hello cursor <span id="cursor">...</span>
+<span id="debug">...</span>
 </body>
 </html>
