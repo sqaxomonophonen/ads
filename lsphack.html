@@ -23,10 +23,13 @@ window.onload = () => {
 		}).then(x => x.json().then(x => {
 			if (x) {
 				seen_serial = x.serial;
-				document.getElementById("cursor").innerText = JSON.stringify(x.cursor);
+				document.getElementById("cursor").innerText = JSON.stringify(x.position);
 			}
 			loop();
-		}));
+		})).catch(e => {
+			document.getElementById("cursor").innerText = "DISCONNECTED"
+			setTimeout(loop, 1000);
+		});
 	}
 	loop();
 };
