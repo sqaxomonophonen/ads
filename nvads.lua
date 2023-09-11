@@ -29,11 +29,11 @@ function ADS()
 		vim.lsp.buf.execute_command({command="entrypoint",arguments=get_pos()})
 	end)
 
-	vim.keymap.set('n', 'J', function()
+	vim.keymap.set('n', '<C-k>', function()
 		vim.lsp.buf.execute_command({command="passes",arguments={delta=-1}})
 	end)
 
-	vim.keymap.set('n', 'L', function()
+	vim.keymap.set('n', '<C-l>', function()
 		vim.lsp.buf.execute_command({command="passes",arguments={delta=1}})
 	end)
 end
