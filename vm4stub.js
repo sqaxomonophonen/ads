@@ -67,7 +67,9 @@
 
 		ops = [],
 		ssplit = s=>s.split(" "),
-		push_op = function() { ops = [...ops, ...arguments]; }
+		push_op = function() {
+			ops = [...ops, ...arguments];
+		},
 
 		push_opn1_expr = (n,expr)=>push_op(eval("_=>{let[a,b]=s("+n+");u("+expr+")}")),
 		call_word = goto_word_index => {

@@ -6,7 +6,7 @@ const create_compiler = require("./compiler.js");
 
 function LOG(msg) {
 	// in neovim see :lua print(vim.lsp.get_log_path())
-	process.stderr.write(msg + "\n");
+	console.error(msg);
 }
 
 const ssmap = (ss) => {
@@ -572,10 +572,10 @@ function long_poll(seen_serial, callback) {
 		callback(poll_state.pack());
 	} else {
 		let listener_handle, timeout_handle;
-		const cancel = () => {
+		function cancel() {
 			poll_state.remove_listener(listener_handle);
 			clearTimeout(timeout_handle);
-		};
+		}
 
 		listener_handle = poll_state.add_listener((pack) => {
 			cancel();

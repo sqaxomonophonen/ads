@@ -549,54 +549,60 @@ function new_compiler(read_file_fn) {
 			//  - flatten inlines
 			//  - resolve word indices
 			//  - figure out which VM ops are required
-			const required_vm_ids = {};
-			const required_vm_other_ops = {};
-			for (const word of prg_words) {
-				for (let opi = 0; opi < word.ops.length; opi++) {
-					let op = word.ops[opi];
-					if (op[0] === FLATTEN_INLINE) {
-						word.ops   = word.ops.slice(0, opi).concat(op[1]).concat(word.ops.slice(opi+1));
-						word.oppos = word.oppos.slice(0, opi).concat(op[2]).concat(word.oppos.slice(opi+1));
-						opi--;
-						continue;
-					}
-
-					const ii = op[0];
-					const ise = ISA[ii];
-					const vtype = ise[2];
-					if (vtype === USER_WORD) {
-						throw new Error("XXX should've been handled earlier");
-					} else if (vtype === ID) {
-						required_vm_ids[ise[3]] = true;
-					} else {
-						required_vm_other_ops[ii] = true;
-					}
-
-					if (typeof op[1] === "object" && op[1][0] === RESOLVE_WORD_INDEX) {
-						let resolved = false;
-						const name = op[1][1];
-						for (let wi = 0; wi < prg_words.length; wi++) {
-							if (prg_words[wi].name === name) {
-								op[1] = wi;
-								resolved = true;
-								break;
-							}
+			let op_remap; // ISA index to VM opcode map (populated here:)
+			{
+				const required_vm_ids = {};
+				const required_vm_other_ops = {};
+				for (const word of prg_words) {
+					for (let opi = 0; opi < word.ops.length; opi++) {
+						let op = word.ops[opi];
+						if (op[0] === FLATTEN_INLINE) {
+							word.ops   = word.ops.slice(0, opi).concat(op[1]).concat(word.ops.slice(opi+1));
+							word.oppos = word.oppos.slice(0, opi).concat(op[2]).concat(word.oppos.slice(opi+1));
+							opi--;
+							continue;
 						}
-						if (!resolved) throw new Error("could not resolve word: " + name);
+
+						const ii = op[0];
+						const ise = ISA[ii];
+						const vtype = ise[2];
+						if (vtype === USER_WORD) {
+							throw new Error("XXX should've been handled earlier");
+						} else if (vtype === ID) {
+							required_vm_ids[ise[3]] = true;
+						} else {
+							required_vm_other_ops[ii] = true;
+						}
+
+						if (typeof op[1] === "object" && op[1][0] === RESOLVE_WORD_INDEX) {
+							let resolved = false;
+							const name = op[1][1];
+							for (let wi = 0; wi < prg_words.length; wi++) {
+								if (prg_words[wi].name === name) {
+									op[1] = wi;
+									resolved = true;
+									break;
+								}
+							}
+							if (!resolved) throw new Error("could not resolve word: " + name);
+						}
 					}
 				}
-			}
 
-			// compact ISA by removing unused ops
-			let op_remap = {};
-			{
+				// populate op_remap with ISA index => VM op
+				// (only for ops the VM needs according to the
+				// program)
+				op_remap = {};
 				let op_idx = 0;
 				for (let ii = 0; ii < ISA.length; ii++) {
 					const ise = ISA[ii];
 					const keep = (ise[2] === ID && (ise[3] === "STATIC" || (is_debug && ise[3] === "DEBUG") || required_vm_ids[ise[3]])) || required_vm_other_ops[ii];
-					if (keep) op_remap[ii] = op_idx++;
+					if (keep) {
+						op_remap[ii] = op_idx++;
+					}
 				}
 			}
+			const include_op = (id) => op_remap[id] !== undefined;
 
 			const vm_words = [];
 			const dbg_words = [];
@@ -632,7 +638,7 @@ function new_compiler(read_file_fn) {
 					function replace_id(id, vtype, join) {
 						let xs = [];
 						for (let i = 0; i < ISA.length; i++) {
-							if (!(required_vm_other_ops[i] && ISA[i][2] === vtype)) continue;
+							if (!(include_op(i) && ISA[i][2] === vtype)) continue;
 							xs.push(ISA[i][3]);
 							accept_isa(i, "at replacing " + id);
 						}
@@ -662,7 +668,7 @@ function new_compiler(read_file_fn) {
 							for (let i = 0; i < ISA.length && !do_include; i++) {
 								const line = ISA[i];
 								if (line[2] !== ID) continue;
-								if (line[3] === id && required_vm_ids[id]) {
+								if (line[3] === id && include_op(i)) {
 									do_include = true;
 									if (do_accept_isa) accept_isa(i, "in id section " + id);
 								}
@@ -882,8 +888,7 @@ function new_compiler(read_file_fn) {
 			trace_program_debug:   match_fn => trace_program(match_fn, true),
 			trace_program_release: match_fn => trace_program(match_fn, false),
 		};
-	};
-
+	}
 
 	return {
 		keyword_set,
