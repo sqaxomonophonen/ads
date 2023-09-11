@@ -527,7 +527,7 @@ function new_compiler(read_file_fn) {
 							}
 						}
 					}
-					if (!found) throw new Error("word not found in scope: " + name);
+					if (!found) throw [word.oppos[opi], "word not found in scope: " + name];
 				}
 
 				if (!inline_ops) prg_words.push(word);

@@ -296,7 +296,7 @@ const vm = (() => {
 			prg = cu.trace_program_debug((depth,name) => name === entrypoint_word);
 		} catch (e) {
 			if (e instanceof Array) {
-				publish(0, null, "COMPILE ERROR: " + JSON.stringify(e));
+				publish(0, null, "COMPILE ERROR at " + e[0][0] + ":" + (1+e[0][1]) + ":" + e[0][2] + "-" +e[0][3] + " : " + e[1]);
 			} else {
 				publish(0, null, "INTERNAL ERROR: " + e);
 			}
