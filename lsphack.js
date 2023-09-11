@@ -235,18 +235,30 @@ function deepeq(a,b) {
 
 const poll_state = (() => {
 	let serial = 1;
-	let packed_state;
+	let packed_state = JSON.stringify([serial,null]);
+	let listeners = [];
+	let listener_serial = 1;
 
 	function push(new_state) {
 		// ima profesionl web devlopr
 		if (packed_state === JSON.stringify([serial, new_state])) return;
-		packed_state = JSON.stringify([++serial, new_state]);
+		serial++;
+		packed_state = JSON.stringify([serial, new_state]);
+		for (const listener of listeners) listener[1](packed_state);
 	}
 
 	return {
 		push,
 		pack: () => packed_state,
 		get_serial: () => serial,
+		add_listener: (fn) => {
+			const serial = listener_serial++;
+			listeners.push([serial, fn]);
+			return serial;
+		},
+		remove_listener: (serial) => {
+			listeners = listeners.filter(x => x[0] !== serial);
+		},
 	};
 })();
 
@@ -335,15 +347,6 @@ const vm = (() => {
 				["entrypoint_word", entrypoint_word],
 				["stack", vm_state.get_tagged_stack()],
 			]);
-
-			/*
-			LOG("stack:"+JSON.stringify({
-				stack:
-				exited_normally,
-				iteration_budget_exceeded,
-				entries,
-			}));
-			*/
 		} catch(e) {
 			if (e instanceof Array) {
 				LOG("COMPILE ERROR: " + JSON.stringify(e));
@@ -565,20 +568,25 @@ const pipe = (stdin, argv) => new Promise((resolve,reject) => {
 });
 
 function long_poll(seen_serial, callback) {
-	const t0 = Date.now();
-	function pollfn() {
-		if (poll_state.get_serial() > seen_serial) {
-			callback(poll_state.pack());
-		} else {
-			const dt = Date.now() - t0;
-			if (dt < 4444) {
-				setTimeout(pollfn, 20)
-			} else {
-				callback(null);
-			}
-		}
+	if (poll_state.get_serial() > seen_serial) {
+		callback(poll_state.pack());
+	} else {
+		let listener_handle, timeout_handle;
+		const cancel = () => {
+			poll_state.remove_listener(listener_handle);
+			clearTimeout(timeout_handle);
+		};
+
+		listener_handle = poll_state.add_listener((pack) => {
+			cancel();
+			callback(pack);
+		});
+
+		timeout_handle = setTimeout(() => {
+			cancel();
+			callback(null);
+		}, 4444);
 	}
-	pollfn();
 }
 
 http.createServer((req, res) => {
@@ -605,7 +613,7 @@ http.createServer((req, res) => {
 		  "js": "text/javascript; charset=utf-8",
 	};
 
-	const STATICS = { "lsphack.html": 1 };
+	const STATICS = { "hack.html":1, "hack.js":1 };
 
 	const serve_static = (name) => {
 		const s = STATICS[name];
@@ -636,23 +644,27 @@ http.createServer((req, res) => {
 	try {
 		if (ps.length === 0) {
 			if (req.method === "GET") {
-				serve_static("lsphack.html");
+				serve_static("hack.html");
 			} else {
 				serve405("GET");
 			}
 		} else {
 			const p0 = ps.shift();
 			if (ps.length > 0) return serve404(); // we only serve one-element paths around here
-			const sig = req.method + " /" + p0;
-			if (sig === "POST /poll") {
-				read_request_body().then(body => {
-					body = JSON.parse(body);
-					long_poll(body.seen_serial, (o) => {
-						serve_raw_json(o === null ? "null" : o);
-					});
-				});
+			if (req.method === "GET" && STATICS[p0]) {
+				serve_static(p0);
 			} else {
-				serve404();
+				const sig = req.method + " /" + p0;
+				if (sig === "POST /poll") {
+					read_request_body().then(body => {
+						body = JSON.parse(body);
+						long_poll(body.seen_serial, (o) => {
+							serve_raw_json(o === null ? "null" : o);
+						});
+					});
+				} else {
+					serve404();
+				}
 			}
 		}
 	} catch (e) {

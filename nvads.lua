@@ -1,4 +1,5 @@
 uv = require("luv")
+
 function ADS()
 	vim.lsp.start({
 		name = 'hack4st',
@@ -36,4 +37,11 @@ function ADS()
 		vim.lsp.buf.execute_command({command="passes",arguments={delta=1}})
 	end)
 end
+
 vim.cmd(":command! ADS :lua ADS()")
+
+vim.filetype.add({
+	extension = {
+		["4st"] = "4st"
+	}
+})
