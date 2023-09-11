@@ -8,7 +8,82 @@ body {
 	color: white;
 	margin: 0;
 	padding: 0;
+	font-family: monospace;
 }
+
+.header {
+	display: flex;
+	color: black;
+}
+
+.hspan {
+	padding-left: 0.4em;
+	padding-right: 0.4em;
+	padding-top: 0.2em;
+	padding-bottom: 0.2em;
+	margin: 0;
+}
+
+#entrypoint {
+	background: #fe9;
+}
+
+#passes {
+	background: #e9f;
+}
+
+#filler {
+	flex: 1 0;
+	background: #9fe;
+}
+
+#stack {
+}
+
+#stack td:nth-child(1) {
+	background: gray;
+	color: black;
+	font-weight: bold;
+	padding-left: 0.5em;
+	padding-right: 0.5em;
+	border-radius: 4px;
+}
+
+.tok-array {
+	color: #f9f;
+}
+
+.tok-tagged-prefix {
+	font-size: 0.75em;
+	padding: 0.1em;
+	color: black;
+	background: #7ff;
+	width: 1.5em;
+	height: 1.5em;
+	line-height: 1.5em;
+	text-align: center;
+	font-weight: bold;
+}
+
+.tok-tagged {
+	font-weight: bold;
+	color: #7ff;
+	font-style: italic;
+}
+
+.tok-boolean {
+	color: #99f;
+}
+
+.tok-number {
+	color: #9f9;
+}
+
+.tok-null {
+	color: #999;
+}
+
+
 </style>
 
 <script src="hack.js"></script>
@@ -16,6 +91,15 @@ body {
 </head>
 
 <body>
-<span id="debug">...</span>
+
+<div class="header">
+<div class="hspan" id="entrypoint" title="entrypoint word and file it's in"></div>
+<div class="hspan" id="passes" title="cursor passes (actual/configured); this is how many times the VM passes your cursor before stopping and showing the stack">???</div>
+<div class="hspan" id="filler"> </div>
+</div>
+
+<div id="stack"></div>
+
+<!--<span id="debug">...</span>-->
 </body>
 </html>
