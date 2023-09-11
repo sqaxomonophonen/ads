@@ -276,84 +276,91 @@ const vm = (() => {
 		return create_compiler((filename) => filesys.read_full_path(path.join(root, filename)));
 	}
 
+	function publish(actual_passes, stack, error) {
+		poll_state.push([
+			["n_passes", [actual_passes, n_passes]],
+			["max_iterations", max_iterations],
+			["entrypoint_filename", entrypoint_filename],
+			["entrypoint_word", entrypoint_word],
+			["stack", stack],
+			["error", error],
+		]);
+	}
+
 	function rerun() {
 		if (entrypoint_word === null) return;
+		const cc = mk_compiler();
+		let prg;
 		try {
-			const cc = mk_compiler();
 			const cu = cc.compile(entrypoint_filename);
-			const prg = cu.trace_program_debug((depth,name) => name === entrypoint_word);
-			if (prg.export_word_indices.length !== 1) {
-				LOG("expected 1 exported word, got " + prg.export_word_indices.length);
-				return;
-			}
-			let vm_state = prg.new_state();
-			vm_state.set_pc_to_export_word_index(0);
-			vm_state.set_iteration_counter(max_iterations);
-
-			let brkpos = null;
-			if (cursor_position != null) {
-				const curpos = [
-					path.basename(filesys.uri_to_full_path(cursor_position.uri)),
-					cursor_position.line - 1,
-					cursor_position.column + 1,
-				];
-				brkpos = cc.find_2lvl_position_at_or_after(prg.dbg_words, curpos[0], curpos[1], curpos[2]);
-				if (brkpos) {
-					prg.set_breakpoint_at(brkpos);
-				}
-			}
-
-			let exited_normally = false;
-			let iteration_budget_exceeded = false;
-			let assertion_failed = false;
-			let entries = 0;
-			let passes_left = n_passes;
-			while (passes_left > 0 && vm_state.can_run()) {
-				if (vm_state.did_exit()) {
-					exited_normally = true;
-					break;
-				}
-				entries++;
-				vm_state.run();
-				if (!vm_state.did_exit()) {
-					if (vm_state.broke_at_breakpoint()) {
-						if (deepeq(vm_state.pc(-1), brkpos)) {
-							//LOG("PASS " + entries + " at pc=" + JSON.stringify(vm_state.pc(-1)) + " (brkpos=" + JSON.stringify(brkpos) +  ") at " + vm_state.get_position_human());
-							passes_left--;
-							if (passes_left > 0) {
-								vm_state.continue_after_user_breakpoint();
-							}
-						} else {
-							// in-code breakpoint?
-							LOG("BRK at " + JSON.stringify(vm_state.pc(-1)) +  " at " + vm_state.get_position_human());
-						}
-					} else if (vm_state.broke_at_assertion()) {
-						assertion_failed = true;
-						break;
-					} else {
-						throw new Error("unhandled break type");
-					}
-				}
-				if (vm_state.get_iteration_counter() === 0) {
-					iteration_budget_exceeded = true;
-					break;
-				}
-			}
-
-			poll_state.push([
-				["n_passes", [n_passes - passes_left, n_passes]],
-				["max_iterations", max_iterations],
-				["entrypoint_filename", entrypoint_filename],
-				["entrypoint_word", entrypoint_word],
-				["stack", vm_state.get_tagged_stack()],
-			]);
-		} catch(e) {
+			prg = cu.trace_program_debug((depth,name) => name === entrypoint_word);
+		} catch (e) {
 			if (e instanceof Array) {
-				LOG("COMPILE ERROR: " + JSON.stringify(e));
+				publish(0, null, "COMPILE ERROR: " + JSON.stringify(e));
 			} else {
-				throw e;
+				publish(0, null, "INTERNAL ERROR: " + e);
+			}
+			return;
+		}
+		if (prg.export_word_indices.length !== 1) {
+			LOG("expected 1 exported word, got " + prg.export_word_indices.length);
+			return;
+		}
+		let vm_state = prg.new_state();
+		vm_state.set_pc_to_export_word_index(0);
+		vm_state.set_iteration_counter(max_iterations);
+
+		let brkpos = null;
+		if (cursor_position != null) {
+			const curpos = [
+				path.basename(filesys.uri_to_full_path(cursor_position.uri)),
+				cursor_position.line - 1,
+				cursor_position.column + 1,
+			];
+			brkpos = cc.find_2lvl_position_at_or_after(prg.dbg_words, curpos[0], curpos[1], curpos[2]);
+			if (brkpos) {
+				prg.set_breakpoint_at(brkpos);
 			}
 		}
+
+		let exited_normally = false;
+		let iteration_budget_exceeded = false;
+		let assertion_failed = false;
+		let entries = 0;
+		let passes_left = n_passes;
+		while (passes_left > 0 && vm_state.can_run()) {
+			if (vm_state.did_exit()) {
+				exited_normally = true;
+				break;
+			}
+			entries++;
+			vm_state.run();
+			if (!vm_state.did_exit()) {
+				if (vm_state.broke_at_breakpoint()) {
+					if (deepeq(vm_state.pc(-1), brkpos)) {
+						//LOG("PASS " + entries + " at pc=" + JSON.stringify(vm_state.pc(-1)) + " (brkpos=" + JSON.stringify(brkpos) +  ") at " + vm_state.get_position_human());
+						passes_left--;
+						if (passes_left > 0) {
+							vm_state.continue_after_user_breakpoint();
+						}
+					} else {
+						// in-code breakpoint?
+						LOG("BRK at " + JSON.stringify(vm_state.pc(-1)) +  " at " + vm_state.get_position_human());
+					}
+				} else if (vm_state.broke_at_assertion()) {
+					assertion_failed = true;
+					break;
+				} else {
+					throw new Error("unhandled break type");
+				}
+			}
+			if (vm_state.get_iteration_counter() === 0) {
+				iteration_budget_exceeded = true;
+				break;
+			}
+		}
+
+		publish(n_passes - passes_left, vm_state.get_tagged_stack(), null);
 	}
 
 	function set_position(pos) {

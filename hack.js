@@ -16,9 +16,18 @@ function present(o) {
 	let c = $("#stack");
 	c.innerHTML = "";
 
+	const { stack, error } = o;
+
+	if (error) {
+		const em = MAKE("div");
+		em.setAttribute("class", "error");
+		em.innerText = error;
+		c.appendChild(em);
+		return;
+	}
+
 	const table = MAKE("table");
 
-	const stack = o.stack;
 	const n = stack.length;
 	for (let i = (n-1); i >= 0; i--) {
 		const value = stack[i];
