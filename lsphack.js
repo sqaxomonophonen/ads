@@ -295,7 +295,7 @@ const vm = (() => {
 				const curpos = [
 					path.basename(filesys.uri_to_full_path(cursor_position.uri)),
 					cursor_position.line - 1,
-					cursor_position.column,
+					cursor_position.column + 1,
 				];
 				brkpos = cc.find_2lvl_position_at_or_after(prg.dbg_words, curpos[0], curpos[1], curpos[2]);
 				if (brkpos) {
