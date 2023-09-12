@@ -1,0 +1,16 @@
+ - FIXME: cursor/brk stuff is a bit "jank": inside loops it doesn't catch all
+   iterations? in :test_times_loop, in the nested loop it only passes the
+   cursor 4 times, but it should be 12. in :test_performance, with cursor on
+   "times", try increasing iterations: the stack should not grow. end-of-word:
+   should show return value; but it doesn't always? cursor inside words other
+   than the one tagged doesn't always work.
+
+ - render rstack too? and globals?
+
+ - library support and type tags for graphs / curves / symbol-sequences +
+   dedicated renderers in hack.js
+
+ - stepping/running? step in/out? 1 step? continue to prev/next brk? I could
+   probably abuse one of the goto's, e.g. "textDocument/typeDefinition" in
+   combination with a "workspace/executeCommand" that sets the context, and
+   thus get an infinite amount of goto commands instead of the 3 LSP offers

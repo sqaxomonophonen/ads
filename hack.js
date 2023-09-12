@@ -45,7 +45,6 @@ function present(o) {
 		tr.appendChild(td0);
 
 		const td1 = MAKE("td");
-		//td1.innerText = JSON.stringify(value);
 
 		function push(subcls, txt) {
 			const e = MAKE("span");
@@ -88,9 +87,6 @@ function present(o) {
 		table.appendChild(tr);
 	}
 	c.appendChild(table);
-
-
-	//document.getElementById("debug").innerText = JSON.stringify(o);
 }
 
 window.addEventListener("load", () => {
