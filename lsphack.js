@@ -351,17 +351,23 @@ const vm = (() => {
 				} else if (vm_state.broke_at_assertion()) {
 					assertion_failed = true;
 					break;
+				} else if (vm_state.get_iteration_counter() <= 0) {
+					iteration_budget_exceeded = true;
+					break;
 				} else {
-					throw new Error("unhandled break type");
+					throw new Error("unhandled break type " + JSON.stringify(vm_state.get_raw()));
 				}
-			}
-			if (vm_state.get_iteration_counter() === 0) {
-				iteration_budget_exceeded = true;
-				break;
 			}
 		}
 
-		publish(n_passes - passes_left, vm_state.get_tagged_stack(), null);
+		let error = null;
+		if (assertion_failed) {
+			error = "assertion failed";
+		} else if (iteration_budget_exceeded) {
+			error = "at max iterations (" + max_iterations + ")";
+		}
+		if (error !== null) error += " at " + vm_state.get_position_human();
+		publish(n_passes - passes_left, vm_state.get_tagged_stack(), error);
 	}
 
 	function set_position(pos) {
