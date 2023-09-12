@@ -36,6 +36,56 @@ function ADS()
 	vim.keymap.set('n', '<C-l>', function()
 		vim.lsp.buf.execute_command({command="passes",arguments={delta=1}})
 	end)
+
+	vim.keymap.set('n', '<C-q>', vim.lsp.buf.implementation)
+
+	local function goto_hack(what, direction)
+		vim.lsp.buf.execute_command({
+			command="prepare_goto_hack",
+			arguments={
+				what=what,
+				direction=direction,
+			},
+		})
+		vim.lsp.buf.type_definition()
+	end
+
+	--[[
+	BAD KEYS:
+	 <C-a>  GNU Screen escape
+	 <C-v>  Vim visual block mode
+	]]
+	vim.keymap.set('n', '<C-w>', function()
+		goto_hack("step", 1)
+	end)
+	vim.keymap.set('n', '<C-s>', function()
+		goto_hack("step", -1)
+	end)
+	vim.keymap.set('n', '<C-e>', function()
+		print("TODO +1")
+	end)
+	vim.keymap.set('n', '<C-d>', function()
+		print("TODO -1")
+	end)
+	vim.keymap.set('n', '<C-r>', function()
+		print("TODO +2")
+	end)
+	vim.keymap.set('n', '<C-f>', function()
+		print("TODO -2")
+	end)
+	vim.keymap.set('n', '<C-t>', function()
+		print("TODO +3")
+	end)
+	vim.keymap.set('n', '<C-g>', function()
+		print("TODO -3")
+	end)
+	vim.keymap.set('n', '<C-y>', function()
+		print("TODO +4")
+	end)
+	vim.keymap.set('n', '<C-h>', function()
+		print("TODO -4")
+	end)
+
 end
 
 vim.cmd(":command! ADS :lua ADS()")

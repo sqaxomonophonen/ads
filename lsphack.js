@@ -406,6 +406,8 @@ const vm = (() => {
 	};
 })();
 
+let goto_hack_arguments;
+
 function process_client_message(msg) {
 	//LOG("RECV:"+msg);
 	const o = JSON.parse(msg);
@@ -449,8 +451,12 @@ function process_client_message(msg) {
 						"position",
 						"entrypoint",
 						"passes",
+						"prepare_goto_hack",
 					],
 				},
+
+				implementationProvider: true,
+				typeDefinitionProvider: true,
 
 				semanticTokensProvider: {
 					range: false,
@@ -481,6 +487,8 @@ function process_client_message(msg) {
 			vm.set_entrypoint_at_position(args);
 		} else if (p.command === "passes") {
 			vm.add_to_n_passes(args.delta);
+		} else if (p.command === "prepare_goto_hack") {
+			goto_hack_arguments = p.arguments;
 		} else {
 			LOG("unhandled command:"+msg);
 		}
@@ -519,6 +527,25 @@ function process_client_message(msg) {
 	} else if (m === "$/cancelRequest") {
 		// blah blah
 		send(p.id, {error: {"code":-32800,"message":"Request cancelled"}});
+	} else if (m === "textDocument/implementation") {
+	} else if (m === "textDocument/typeDefinition") {
+		const arg = goto_hack_arguments;
+		if (!arg) {
+			send_result(null);
+		} else {
+			if (arg.what === "step") {
+				const d = goto_hack_arguments.direction;
+				send_result({
+					uri: p.textDocument.uri,
+					range: {
+						start: {  line:  p.position.line+d,  character: p.position.character  },
+						end:   {  line:  p.position.line+d,  character: p.position.character  },
+					}
+				});
+			} else {
+				send_result(null);
+			}
+		}
 	} else {
 		LOG("UNHANDLED:"+JSON.stringify(msg));
 	}
