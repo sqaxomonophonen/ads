@@ -342,46 +342,42 @@ function new_compiler(read_file_fn) {
 	const is_test_word = word => word.startsWith("test_");
 	const is_main_word = word => word.startsWith("main_");
 
-	function find_position(positions, filename, line, column) {
-		for (let i = 0; i < positions.length; i++) {
-			const pos = positions[i];
-			if (pos[0] !== filename) continue;
-			if (pos[1] !== line) continue;
-			if (!(pos[2] <= column && column <= pos[3])) continue;
-			return i;
-		}
-		return -1;
-	}
-
 	function find_2lvl_position_at_or_after(positions2lvl, filename, line, column) {
 		const n0 = positions2lvl.length;
+		let best_position = null;
+		let best_distance = null;
 		for (let i0 = 0; i0 < n0; i0++) {
 			const positions = positions2lvl[i0];
 			const n1 = positions.length;
 			for (let i1 = 0; i1 < n1; i1++) {
 				const pos = positions[i1];
 				if (pos[0] !== filename) continue;
-				if (line > pos[1]) continue;
-				if (line === pos[1] && column > pos[2]) continue;
-				return [i0, i1];
+				if (pos[1] > line || (pos[1] === line && pos[2] >= column)) {
+					const position = [i0,i1];
+					const distance = [pos[1]-line, pos[2]-column];
+					if (best_position === null || (distance[0] < best_distance[0] || (distance[0] === best_distance[0] && distance[1] < best_distance[1]))) {
+						best_position = position;
+						best_distance = distance;
+
+					}
+				}
 			}
 		}
-		return null;
+		return best_position;
 	}
 
 	function find_word(state, filename, line, column) {
 		const n = state.positions.length;
 		const word_stack = [];
 		for (let i = 0; i < n; i++) {
-			const token    = state.tokens[i];
+			const token = state.tokens[i];
 			const t = token[0];
 			if (t === BEGIN_WORD || t === BEGIN_TABLE_WORD || t === BEGIN_INLINE_WORD) {
 				word_stack.push(token[1]);
 			}
 			const pos = state.positions[i];
-			console.error(pos);
 			if (pos[0] === filename && (pos[1] > line || (pos[1] === line && pos[2] >= column))) {
-				return word_stack[word_stack.length-1];
+				return word_stack.pop();
 			}
 			if (t === END_WORD) {
 				word_stack.pop();
@@ -393,8 +389,8 @@ function new_compiler(read_file_fn) {
 	function compile(filename, is_release) {
 		let preamble = "";
 		preamble += ":= DTGRAPH" + (is_release ? "" : " _DTGRAPH") + " ;\n";
-		let state = tokenize_string("<preamble.4st>", preamble);
-		state = preprocess_from_entry_file(filename, state);
+		let tokenizer_state = tokenize_string("<preamble.4st>", preamble);
+		tokenizer_state = preprocess_from_entry_file(filename, tokenizer_state);
 
 		let token_cursor = -1;
 		let word_serial = 0;
@@ -412,8 +408,8 @@ function new_compiler(read_file_fn) {
 			let end_of_word = false;
 			while (!end_of_word) {
 				token_cursor++;
-				const tok = state.tokens[token_cursor];
-				const pos = state.positions[token_cursor];
+				const tok = tokenizer_state.tokens[token_cursor];
+				const pos = tokenizer_state.positions[token_cursor];
 				if (!tok) {
 					if (depth > 0) {
 						throw [null, "end of token stream inside word (depth="+depth+")"];
@@ -923,9 +919,8 @@ function new_compiler(read_file_fn) {
 		compile_release: f=>compile(f,true),
 		is_test_word,
 		is_main_word,
-		find_position,
-		find_2lvl_position_at_or_after,
 		find_word,
+		find_2lvl_position_at_or_after,
 	};
 }
 
