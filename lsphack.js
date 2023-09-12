@@ -350,7 +350,7 @@ const vm = (() => {
 				} else if (vm_state.broke_at_assertion()) {
 					assertion_failed = true;
 					break;
-				} else if (vm_state.get_iteration_counter() <= 0) {
+				} else if (vm_state.get_iteration_counter() === 0) {
 					iteration_budget_exceeded = true;
 					break;
 				} else {

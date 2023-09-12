@@ -191,7 +191,13 @@
 	);
 	/*ST4}DEBUG*/
 
-	for (;advance(),(max_instructions--) && !ops[current_opcode]();) {}   // XXX(size) skip max_instructions stuff in release
+	// XXX(size) this is the "debug version". in release, try:
+	//    for(;advance(),!ops[current_opcode](););
+	while (max_instructions) {
+		max_instructions--;
+		advance();
+		if (ops[current_opcode]()) break;
+	}
 
 	return bundle_state(); // XXX(size) probably return stack or stack[0] in release?
 }
