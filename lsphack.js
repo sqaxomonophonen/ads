@@ -264,7 +264,7 @@ const poll_state = (() => {
 
 const vm = (() => {
 	let n_passes = 1;
-	//let total_passes; // XXX?
+	let actual_passes = null;
 	let max_iterations = 250e3;
 	let cursor_position = null;
 	let vm = null;
@@ -287,6 +287,7 @@ const vm = (() => {
 	}
 
 	function rerun() {
+		actual_passes = null;
 		if (entrypoint_word === null) return;
 		const cc = mk_compiler();
 		let prg;
@@ -306,9 +307,6 @@ const vm = (() => {
 			LOG("expected 1 exported word, got " + prg.export_word_indices.length);
 			return;
 		}
-		let vm_state = prg.new_state();
-		vm_state.set_pc_to_export_word_index(0);
-		vm_state.set_iteration_counter(max_iterations);
 
 		let brkpos = null;
 		if (cursor_position != null) {
@@ -317,46 +315,61 @@ const vm = (() => {
 				cursor_position.line - 1,
 				cursor_position.column + 1,
 			];
+
 			brkpos = cc.find_2lvl_position_at_or_after(prg.dbg_words, curpos[0], curpos[1], curpos[2]);
 			if (brkpos) {
 				prg.set_breakpoint_at(brkpos);
 			}
 		}
 
-		let exited_normally = false;
-		let iteration_budget_exceeded = false;
-		let assertion_failed = false;
-		let entries = 0;
-		let passes_left = n_passes;
-		while (passes_left > 0 && vm_state.can_run()) {
-			if (vm_state.did_exit()) {
-				exited_normally = true;
-				break;
-			}
-			entries++;
-			vm_state.run();
-			if (!vm_state.did_exit()) {
-				if (vm_state.broke_at_breakpoint()) {
-					if (deepeq(vm_state.pc(-1), brkpos)) {
-						//LOG("PASS " + entries + " at pc=" + JSON.stringify(vm_state.pc(-1)) + " (brkpos=" + JSON.stringify(brkpos) +  ") at " + vm_state.get_position_human());
-						passes_left--;
-						if (passes_left > 0) {
-							vm_state.continue_after_user_breakpoint();
+		let last_attempt_iteration_count, vm_state, iteration_budget_exceeded,
+		    assertion_failed, passes_left ;
+		const get_iteration_count = () => max_iterations - vm_state.get_iteration_counter();
+
+		for (let attempt = 0; attempt < 2; attempt++) {
+			vm_state = prg.new_state();
+			vm_state.set_pc_to_export_word_index(0);
+			vm_state.set_iteration_counter(
+				attempt === 0 ? max_iterations            :
+				attempt === 1 ? last_attempt_iteration_count :
+				0);
+
+			iteration_budget_exceeded = false;
+			assertion_failed = false;
+			passes_left = n_passes;
+			while (passes_left > 0 && vm_state.can_run()) {
+				if (vm_state.did_exit()) {
+					break;
+				}
+				vm_state.run();
+				if (!vm_state.did_exit()) {
+					if (vm_state.broke_at_breakpoint()) {
+						if (deepeq(vm_state.pc(-1), brkpos)) {
+							passes_left--;
+							if (passes_left > 0) {
+								vm_state.continue_after_user_breakpoint();
+								last_attempt_iteration_count = get_iteration_count();
+							}
+						} else {
+							// in-code breakpoint?
+							LOG("BRK at " + JSON.stringify(vm_state.pc(-1)) +  " at " + vm_state.get_position_human());
 						}
+					} else if (vm_state.broke_at_assertion()) {
+						assertion_failed = true;
+						break;
+					} else if (vm_state.get_iteration_counter() === 0) {
+						iteration_budget_exceeded = true;
+						break;
 					} else {
-						// in-code breakpoint?
-						LOG("BRK at " + JSON.stringify(vm_state.pc(-1)) +  " at " + vm_state.get_position_human());
+						throw new Error("unhandled break type " + JSON.stringify(vm_state.get_raw()));
 					}
-				} else if (vm_state.broke_at_assertion()) {
-					assertion_failed = true;
-					break;
-				} else if (vm_state.get_iteration_counter() === 0) {
-					iteration_budget_exceeded = true;
-					break;
-				} else {
-					throw new Error("unhandled break type " + JSON.stringify(vm_state.get_raw()));
 				}
 			}
+
+			if (passes_left === 0 || assertion_failed || (attempt === 0 && iteration_budget_exceeded)) {
+				break;
+			}
+			iteration_budget_exceeded = false;
 		}
 
 		let error = null;
@@ -366,9 +379,10 @@ const vm = (() => {
 			error = "at max iterations (" + max_iterations + ")";
 		}
 		if (error !== null) error += " at " + vm_state.get_position_human();
+		actual_passes = n_passes - passes_left;
 		publish({
-			actual_passes: n_passes - passes_left,
-			n_iterations: max_iterations - vm_state.get_iteration_counter(),
+			actual_passes,
+			n_iterations: get_iteration_count(),
 			stack: vm_state.get_tagged_stack(),
 			rstack: vm_state.get_rstack(),
 			error,
@@ -401,6 +415,9 @@ const vm = (() => {
 	function add_to_n_passes(d) {
 		const old_n_passes = n_passes;
 		n_passes = Math.max(1, n_passes + d);
+		if (d < 0 && actual_passes !== null) {
+			n_passes = Math.min(n_passes, actual_passes);
+		}
 		if (n_passes !== old_n_passes) rerun();
 	}
 
