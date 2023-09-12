@@ -10,6 +10,15 @@ function unpack_array_object(xs) {
 	return o;
 }
 
+function set_error(error) {
+	const em = MAKE("div");
+	em.setAttribute("class", "error");
+	em.innerText = error;
+	const c = $("#stack");
+	c.innerHTML = "";
+	c.appendChild(em);
+}
+
 function present(o) {
 	$("#entrypoint").innerText = ":" + o.entrypoint_word + " (" + o.entrypoint_filename + ")";
 	$("#passes").innerText = o.n_passes[0] + "/" + o.n_passes[1];
@@ -19,10 +28,7 @@ function present(o) {
 	const { stack, error } = o;
 
 	if (error) {
-		const em = MAKE("div");
-		em.setAttribute("class", "error");
-		em.innerText = error;
-		c.appendChild(em);
+		set_error(error);
 		return;
 	}
 
@@ -103,7 +109,9 @@ window.addEventListener("load", () => {
 			loop();
 		})).catch(e => {
 			console.error(e);
-			document.getElementById("debug").innerText = "DISCONNECTED"
+			$("#entrypoint").innerText = "---";
+			$("#passes").innerText = "---";
+			set_error("OFFLINE");
 			seen_serial = 0;
 			setTimeout(loop, 1000);
 		});
