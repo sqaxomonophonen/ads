@@ -193,7 +193,7 @@
 
 	// XXX(size) this is the "debug version". in release, try:
 	//    for(;advance(),!ops[current_opcode](););
-	while (max_instructions) {
+	while (max_instructions > 0) {
 		max_instructions--;
 		advance();
 		if (ops[current_opcode]()) break;
