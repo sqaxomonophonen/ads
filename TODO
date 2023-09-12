@@ -1,3 +1,8 @@
+ - FIXME: entrypoint selection at ": test_recursion" selects ": gcd" from the
+   line below
+
+ - FIXME(?): cannot see stack at last position in word (implicit return)
+
  - library support and type tags for graphs / curves / symbol-sequences +
    dedicated renderers in hack.js
 
