@@ -1,6 +1,3 @@
- - entrypoint tagging (shift+k in nvads.lua mapping) ought to work anywhere
-   within word body, not just on the header
-
  - FIXME: why doesn't cursor brks work inside word calls? e.g. in
    :test_recursion I expect to be able to break inside :gcd, but it doesn't
    work, and also not in all (most?) other tests

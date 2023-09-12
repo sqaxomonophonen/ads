@@ -113,12 +113,12 @@ function new_compiler(read_file_fn) {
 	}
 	if (number_ii === undefined || call_ii === undefined) throw new Error("XXX");
 
-	const BEGIN_WORD="BEGIN_WORD", DIRECTIVE="DIRECTIVE",
-	COMMENT="COMMENT", BUILTIN_WORD="BUILTIN_WORD", END_WORD="END_WORD",
-	OP="OP", BEGIN_TABLE_WORD="BEGIN_TABLE_WORD",
-	BEGIN_INLINE_WORD="BEGIN_INLINE_WORD", WORD_INDEX="WORD_INDEX",
-	RESOLVE_WORD_INDEX="RESOLVE_WORD_INDEX", FLATTEN_INLINE="FLATTEN_INLINE"
-	TOKEN_ERROR="TOKEN_ERROR"
+	const BEGIN_WORD="BEGIN_WORD", BEGIN_TABLE_WORD="BEGIN_TABLE_WORD",
+	BEGIN_INLINE_WORD="BEGIN_INLINE_WORD", END_WORD="END_WORD",
+	DIRECTIVE="DIRECTIVE", COMMENT="COMMENT", BUILTIN_WORD="BUILTIN_WORD",
+	OP="OP", WORD_INDEX="WORD_INDEX",
+	RESOLVE_WORD_INDEX="RESOLVE_WORD_INDEX",
+	FLATTEN_INLINE="FLATTEN_INLINE", TOKEN_ERROR="TOKEN_ERROR"
 	;
 
 	const chain_state = (state) => state ? state : { tokens: [], positions: [], error_latch: false };
@@ -367,6 +367,27 @@ function new_compiler(read_file_fn) {
 			}
 		}
 		return null;
+	}
+
+	function find_word(state, filename, line, column) {
+		const n = state.positions.length;
+		const word_stack = [];
+		for (let i = 0; i < n; i++) {
+			const token    = state.tokens[i];
+			const t = token[0];
+			if (t === BEGIN_WORD || t === BEGIN_TABLE_WORD || t === BEGIN_INLINE_WORD) {
+				word_stack.push(token[1]);
+			}
+			const pos = state.positions[i];
+			console.error(pos);
+			if (pos[0] === filename && (pos[1] > line || (pos[1] === line && pos[2] >= column))) {
+				return word_stack[word_stack.length-1];
+			}
+			if (t === END_WORD) {
+				word_stack.pop();
+			}
+		}
+		return undefined;
 	}
 
 	function compile(filename, is_release) {
@@ -904,6 +925,7 @@ function new_compiler(read_file_fn) {
 		is_main_word,
 		find_position,
 		find_2lvl_position_at_or_after,
+		find_word,
 	};
 }
 

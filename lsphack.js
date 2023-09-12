@@ -389,11 +389,12 @@ const vm = (() => {
 		entrypoint_filename = filename;
 		const state = cc.tokenize_file(filename);
 		//LOG("TOK!" + JSON.stringify(tokens));
-		const i = cc.find_position(state.positions, filename, pos.line-1, pos.column);
-		if (i !== -1 && state.tokens[i][0] === "BEGIN_WORD") {
-			entrypoint_word = state.tokens[i][1];
+		const word = cc.find_word(state, filename, pos.line-1, pos.column);
+		LOG("word: " + word);
+		if (word) {
+			entrypoint_word = word;
+			rerun();
 		}
-		rerun();
 	}
 
 	function add_to_n_passes(d) {
