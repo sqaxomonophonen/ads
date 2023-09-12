@@ -1,4 +1,6 @@
  - library support and type tags for graphs / curves / symbol-sequences +
    dedicated renderers in hack.js
 
+ - goto word implementation (on <C-q>)
+
  - step forward/backward, step in/out, goto next/prev brk
