@@ -368,6 +368,7 @@ const vm = (() => {
 		if (error !== null) error += " at " + vm_state.get_position_human();
 		publish({
 			actual_passes: n_passes - passes_left,
+			n_iterations: max_iterations - vm_state.get_iteration_counter(),
 			stack: vm_state.get_tagged_stack(),
 			rstack: vm_state.get_rstack(),
 			error,
@@ -403,9 +404,15 @@ const vm = (() => {
 		if (n_passes !== old_n_passes) rerun();
 	}
 
+	function max_iterations_scale(scalar) {
+		max_iterations *= scalar;
+		rerun();
+	}
+
 	return {
 		rerun,
 		add_to_n_passes,
+		max_iterations_scale,
 		set_entrypoint_at_position,
 		set_position,
 	};
@@ -456,6 +463,7 @@ function process_client_message(msg) {
 						"position",
 						"entrypoint",
 						"passes",
+						"max_iterations_scale",
 						"prepare_goto_hack",
 					],
 				},
@@ -492,6 +500,8 @@ function process_client_message(msg) {
 			vm.set_entrypoint_at_position(args);
 		} else if (p.command === "passes") {
 			vm.add_to_n_passes(args.delta);
+		} else if (p.command === "max_iterations_scale") {
+			vm.max_iterations_scale(args.scalar);
 		} else if (p.command === "prepare_goto_hack") {
 			goto_hack_arguments = p.arguments;
 		} else {
@@ -538,7 +548,10 @@ function process_client_message(msg) {
 		if (!arg) {
 			send_result(null);
 		} else {
-			if (arg.what === "step") {
+			switch (arg.what) {
+			case "step":
+			case "callstack":
+			case "brk": {
 				const d = goto_hack_arguments.direction;
 				send_result({
 					uri: p.textDocument.uri,
@@ -547,8 +560,11 @@ function process_client_message(msg) {
 						end:   {  line:  p.position.line+d,  character: p.position.character  },
 					}
 				});
-			} else {
+			} break;
+			default:
+				console.error("what what? " + arg.what);
 				send_result(null);
+
 			}
 		}
 	} else {

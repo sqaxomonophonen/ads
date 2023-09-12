@@ -12,7 +12,8 @@ function set_error(error) {
 
 function present(o) {
 	$("#entrypoint").innerText = ":" + o.entrypoint_word + " (" + o.entrypoint_filename + ")";
-	$("#passes").innerText = o.actual_passes + "/" + o.n_passes;
+	$("#passes").innerText = o.actual_passes + "/" + o.n_passes + "p";
+	$("#iterations").innerText = o.n_iterations + "/" + o.max_iterations + "o";
 
 	const { stack, rstack, error } = o;
 

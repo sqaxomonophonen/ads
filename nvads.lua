@@ -29,15 +29,6 @@ function ADS()
 		vim.lsp.buf.execute_command({command="entrypoint",arguments=get_pos()})
 	end)
 
-	vim.keymap.set('n', '<C-k>', function()
-		vim.lsp.buf.execute_command({command="passes",arguments={delta=-1}})
-	end)
-
-	vim.keymap.set('n', '<C-l>', function()
-		vim.lsp.buf.execute_command({command="passes",arguments={delta=1}})
-	end)
-
-	vim.keymap.set('n', '<C-q>', vim.lsp.buf.implementation)
 
 	local function goto_hack(what, direction)
 		vim.lsp.buf.execute_command({
@@ -50,41 +41,32 @@ function ADS()
 		vim.lsp.buf.type_definition()
 	end
 
+	local function dpass(delta)
+		vim.lsp.buf.execute_command({command="passes",arguments={delta=delta}})
+	end
+
+	local function max_iterations_scale(scalar)
+		vim.lsp.buf.execute_command({command="max_iterations_scale",arguments={scalar=scalar}})
+	end
+
 	--[[
-	BAD KEYS:
+	BAD CTRL KEYS:
 	 <C-a>  GNU Screen escape
 	 <C-v>  Vim visual block mode
 	]]
-	vim.keymap.set('n', '<C-w>', function()
-		goto_hack("step", 1)
-	end)
-	vim.keymap.set('n', '<C-s>', function()
-		goto_hack("step", -1)
-	end)
-	vim.keymap.set('n', '<C-e>', function()
-		print("TODO +1")
-	end)
-	vim.keymap.set('n', '<C-d>', function()
-		print("TODO -1")
-	end)
-	vim.keymap.set('n', '<C-r>', function()
-		print("TODO +2")
-	end)
-	vim.keymap.set('n', '<C-f>', function()
-		print("TODO -2")
-	end)
-	vim.keymap.set('n', '<C-t>', function()
-		print("TODO +3")
-	end)
-	vim.keymap.set('n', '<C-g>', function()
-		print("TODO -3")
-	end)
-	vim.keymap.set('n', '<C-y>', function()
-		print("TODO +4")
-	end)
-	vim.keymap.set('n', '<C-h>', function()
-		print("TODO -4")
-	end)
+	vim.keymap.set('n', '<C-q>', vim.lsp.buf.implementation)
+	vim.keymap.set('n', '<C-w>', function() dpass( 1) end)
+	vim.keymap.set('n', '<C-s>', function() dpass(-1) end)
+	vim.keymap.set('n', '<C-e>', function() goto_hack("step",        1) end)
+	vim.keymap.set('n', '<C-d>', function() goto_hack("step",       -1) end)
+	vim.keymap.set('n', '<C-r>', function() goto_hack("callstack",   1) end)
+	vim.keymap.set('n', '<C-f>', function() goto_hack("callstack",  -1) end)
+	vim.keymap.set('n', '<C-t>', function() goto_hack("brk",         1) end)
+	vim.keymap.set('n', '<C-g>', function() goto_hack("brk",        -1) end)
+	vim.keymap.set('n', '<C-y>', function() print("A+") end)
+	vim.keymap.set('n', '<C-h>', function() print("A-") end)
+	vim.keymap.set('n', '<C-u>', function() max_iterations_scale(2) end)
+	vim.keymap.set('n', '<C-j>', function() max_iterations_scale(0.5) end)
 
 end
 
