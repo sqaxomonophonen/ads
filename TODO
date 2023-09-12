@@ -1,9 +1,9 @@
- - FIXME: cursor/brk stuff is a bit "jank": inside loops it doesn't catch all
-   iterations? in :test_times_loop, in the nested loop it only passes the
-   cursor 4 times, but it should be 12. in :test_performance, with cursor on
-   "times", try increasing iterations: the stack should not grow. end-of-word:
-   should show return value; but it doesn't always? cursor inside words other
-   than the one tagged doesn't always work.
+ - entrypoint tagging (shift+k in nvads.lua mapping) ought to work anywhere
+   within word body, not just on the header
+
+ - FIXME: why doesn't cursor brks work inside word calls? e.g. in
+   :test_recursion I expect to be able to break inside :gcd, but it doesn't
+   work, and also not in all (most?) other tests
 
  - library support and type tags for graphs / curves / symbol-sequences +
    dedicated renderers in hack.js
