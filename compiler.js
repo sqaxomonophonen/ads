@@ -797,7 +797,7 @@ function new_compiler(read_file_fn) {
 				const get_op = () => vm_words[pc0()][pc1()-1];
 				const get_position = () => dbg_words[pc0()][pc1()-1];
 				const get_iteration_counter =  () => raw[ITERATION_COUNT];
-				const set_iteration_counter = (n) => raw[ITERATION_COUNT] = n;
+				const set_iteration_counter = (n) => raw[ITERATION_COUNT] = Math.ceil(n);
 				let dump_callback_fn;
 				function rewind(n) {
 					raw[PC1] -= n;
