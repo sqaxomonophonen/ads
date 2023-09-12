@@ -37,7 +37,14 @@ body {
 	background: #9fe;
 }
 
+#main {
+	display: flex;
+	flex-direction: row;
+}
+
 #stack {
+	display: flex;
+	flex: 1 0;
 }
 
 #stack td:nth-child(1) {
@@ -51,6 +58,18 @@ body {
 
 .tok-array {
 	color: #f9f;
+}
+
+#rstack {
+	display: flex;
+	flex: 0 0;
+	color: #24f;
+	flex-direction: column;
+	text-align: right;
+	margin-right: 0.3em;
+}
+
+#rstack div {
 }
 
 .tok-tagged-prefix {
@@ -105,7 +124,10 @@ body {
 <div class="hspan" id="filler"> </div>
 </div>
 
+<div id="main">
 <div id="stack"></div>
+<div id="rstack"></div>
+</div>
 
 <!--<span id="debug">...</span>-->
 </body>

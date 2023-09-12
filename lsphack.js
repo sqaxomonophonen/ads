@@ -276,15 +276,14 @@ const vm = (() => {
 		return create_compiler((filename) => filesys.read_full_path(path.join(root, filename)));
 	}
 
-	function publish(actual_passes, stack, error) {
-		poll_state.push([
-			["n_passes", [actual_passes, n_passes]],
-			["max_iterations", max_iterations],
-			["entrypoint_filename", entrypoint_filename],
-			["entrypoint_word", entrypoint_word],
-			["stack", stack],
-			["error", error],
-		]);
+	function publish(o) {
+		poll_state.push({
+			"n_passes": n_passes,
+			"max_iterations": max_iterations,
+			"entrypoint_filename": entrypoint_filename,
+			"entrypoint_word": entrypoint_word,
+			...o,
+		});
 	}
 
 	function rerun() {
@@ -297,9 +296,9 @@ const vm = (() => {
 		} catch (e) {
 			if (e instanceof Array) {
 				const loc = !e[0] ? "N/A" : e[0][0] + ":" + (1+e[0][1]) + ":" + e[0][2] + "-" +e[0][3] ;
-				publish(0, null, "COMPILE ERROR at " + loc + " : " + e[1]);
+				publish({error: "COMPILE ERROR at " + loc + " : " + e[1]});
 			} else {
-				publish(0, null, "INTERNAL ERROR: " + e);
+				publish({error: "INTERNAL ERROR: " + e});
 			}
 			return;
 		}
@@ -367,7 +366,12 @@ const vm = (() => {
 			error = "at max iterations (" + max_iterations + ")";
 		}
 		if (error !== null) error += " at " + vm_state.get_position_human();
-		publish(n_passes - passes_left, vm_state.get_tagged_stack(), error);
+		publish({
+			actual_passes: n_passes - passes_left,
+			stack: vm_state.get_tagged_stack(),
+			rstack: vm_state.get_rstack(),
+			error,
+		});
 	}
 
 	function set_position(pos) {

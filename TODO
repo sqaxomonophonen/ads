@@ -5,12 +5,7 @@
    should show return value; but it doesn't always? cursor inside words other
    than the one tagged doesn't always work.
 
- - render rstack too? and globals?
-
  - library support and type tags for graphs / curves / symbol-sequences +
    dedicated renderers in hack.js
 
- - stepping/running? step in/out? 1 step? continue to prev/next brk? I could
-   probably abuse one of the goto's, e.g. "textDocument/typeDefinition" in
-   combination with a "workspace/executeCommand" that sets the context, and
-   thus get an infinite amount of goto commands instead of the 3 LSP offers
+ - step forward/backward, step in/out, goto next/prev brk
