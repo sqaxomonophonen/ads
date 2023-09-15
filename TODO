@@ -3,9 +3,6 @@
 
  - FIXME(?): cannot see stack at last position in word (implicit return)
 
- - FIXME: e.g. in :test_pi, when incrementing n_passes, the position is off by
-   one
-
  - library support and type tags for graphs / curves / symbol-sequences +
    dedicated renderers in hack.js
 

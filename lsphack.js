@@ -352,8 +352,8 @@ const vm = (() => {
 						if (deepeq(vm_state.pc(-1), brkpos)) {
 							passes_left--;
 							if (passes_left > 0) {
+								last_attempt_iteration_count = get_iteration_count() - 1;
 								vm_state.continue_after_user_breakpoint();
-								last_attempt_iteration_count = get_iteration_count();
 							}
 						} else {
 							// in-code breakpoint?
@@ -386,7 +386,7 @@ const vm = (() => {
 			error = "at max iterations (" + max_iterations + ")";
 		}
 		if (error !== null) error += " at " + vm_state.get_position_human();
-		actual_passes = n_passes - passes_left;
+		actual_passes = Math.max(1, n_passes - passes_left);
 		publish({
 			actual_passes,
 			n_iterations: get_iteration_count(),

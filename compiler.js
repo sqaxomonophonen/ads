@@ -820,10 +820,10 @@ function new_compiler(read_file_fn) {
 					// instructions with brk instructions. this is much preferable to
 					// rstack corruption bugs (if brk was instead inserted/deleted)
 					// and VM bloat (gotta keep it small)
+					const tmp = get_iteration_counter();
 					rewind(1);
 					const brkpos = pc();
 					remove_breakpoint();
-					const tmp = get_iteration_counter();
 					set_iteration_counter(1); // prepare single-step
 					run(); // single-step
 					set_iteration_counter(tmp-1); // restore iteration counter
