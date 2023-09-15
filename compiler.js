@@ -352,11 +352,11 @@ function new_compiler(read_file_fn) {
 			for (let i1 = 0; i1 < n1; i1++) {
 				const pos = positions[i1];
 				if (pos[0] !== filename) continue;
-				if (pos[1] > line || (pos[1] === line && pos[2] >= column)) {
-					const position = [i0,i1];
-					const distance = [pos[1]-line, pos[2]-column];
+				if (line > pos[1] || (line === pos[1] && column >= pos[2])) {
+					const distance = [line-pos[1], column-pos[2]];
+					if (distance[0] < 0) throw new Error("ASSERTION ERROR");
 					if (best_position === null || (distance[0] < best_distance[0] || (distance[0] === best_distance[0] && distance[1] < best_distance[1]))) {
-						best_position = position;
+						best_position = [i0,i1];
 						best_distance = distance;
 
 					}

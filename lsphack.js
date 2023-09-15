@@ -313,7 +313,7 @@ const vm = (() => {
 			const curpos = [
 				path.basename(filesys.uri_to_full_path(cursor_position.uri)),
 				cursor_position.line - 1,
-				cursor_position.column + 1,
+				cursor_position.column,
 			];
 
 			brkpos = cc.find_2lvl_position_at_or_after(prg.dbg_words, curpos[0], curpos[1], curpos[2]);
@@ -351,10 +351,8 @@ const vm = (() => {
 					if (vm_state.broke_at_breakpoint()) {
 						if (deepeq(vm_state.pc(-1), brkpos)) {
 							passes_left--;
-							if (passes_left > 0) {
-								last_attempt_iteration_count = get_iteration_count() - 1;
-								vm_state.continue_after_user_breakpoint();
-							}
+							last_attempt_iteration_count = get_iteration_count() - 1;
+							vm_state.continue_after_user_breakpoint();
 						} else {
 							// in-code breakpoint?
 							LOG("BRK at " + JSON.stringify(vm_state.pc(-1)) +  " at " + vm_state.get_position_human());
