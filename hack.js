@@ -2,12 +2,18 @@ $  = x => document.querySelector(x);
 MAKE = tag => document.createElement(tag);
 
 function set_error(error) {
+	$("#stack").innerHTML = "";
+	$("#rstack").innerHTML = "";
 	const em = MAKE("div");
 	em.setAttribute("class", "error");
 	em.innerText = error;
-	const c = $("#stack");
+	const c = $("#error");
 	c.innerHTML = "";
 	c.appendChild(em);
+}
+
+function clear_error() {
+	$("#error").innerHTML = "";
 }
 
 function class_set(em) {
@@ -72,6 +78,8 @@ function present(o) {
 		set_error(error);
 		return;
 	}
+
+	clear_error();
 
 	{
 		const c = $("#rstack");
