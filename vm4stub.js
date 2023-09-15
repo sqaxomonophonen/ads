@@ -180,7 +180,8 @@
 	/*ST4:arrjoin*/    push_op((__a,__b) => { [__a,__b] = s(2); u([...__a, ...__b]); });
 	/*ST4:arrsplit*/   push_op((__pivot, __xs) => { __pivot = POP(); __xs = POP(); u(__xs.slice(0,__pivot)); u(__xs.slice(__pivot)); });
 
-	const bundle_state = _ => [pc0,pc1,stack,rstack,globals,max_instructions,value_type_tag_map] // XXX(size) not required in release
+	let exc; // XXX(size)
+	const bundle_state = _ => [pc0,pc1,stack,rstack,globals,max_instructions,value_type_tag_map,exc] // XXX(size) not required in release
 
 	/*ST4{DEBUG*/
 	push_op(
@@ -193,10 +194,14 @@
 
 	// XXX(size) this is the "debug version". in release, try:
 	//    for(;advance(),!ops[current_opcode](););
-	while (max_instructions > 0) {
-		max_instructions--;
-		advance();
-		if (ops[current_opcode]()) break;
+	try {
+		while (max_instructions > 0) {
+			max_instructions--;
+			advance();
+			if (ops[current_opcode]()) break;
+		}
+	} catch (e) {
+		exc = e;
 	}
 
 	return bundle_state(); // XXX(size) probably return stack or stack[0] in release?

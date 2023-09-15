@@ -786,7 +786,8 @@ function new_compiler(read_file_fn) {
 
 			function bless(raw) {
 				let self;
-				const PC0=0, PC1=1, STACK=2, RSTACK=3, GLOBALS=4, ITERATION_COUNT=5, VALUE_TYPE_TAG_MAP=6;
+				const PC0=0, PC1=1, STACK=2, RSTACK=3, GLOBALS=4,
+				      ITERATION_COUNT=5, VALUE_TYPE_TAG_MAP=6, EXC=7;
 				const pc0 = () => raw[PC0];
 				const pc1 = () => raw[PC1];
 				const pc = (delta) => [pc0(), pc1()+(delta|0)];
@@ -857,12 +858,15 @@ function new_compiler(read_file_fn) {
 					get_stack,
 					get_rstack,
 					did_exit: () => raw[PC0] < 0,
+					did_throw: () => !!raw[EXC],
+					get_exception:  () => raw[EXC],
 					broke_at_assertion:   () => get_op()[0] === opresolv(WORD, "assert"),
 					broke_at_breakpoint:  () => get_op()[0] === brk(),
 					get_position,
 					pc,
 					get_position_human: () => {
 						const pos = get_position();
+						if (!pos) return "???";
 						return pos[0] + ":" + (1+pos[1]) + ":" + (1+pos[2]);
 					},
 					set_breakpoint,

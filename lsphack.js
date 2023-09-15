@@ -323,7 +323,7 @@ const vm = (() => {
 		}
 
 		let last_attempt_iteration_count, vm_state, iteration_budget_exceeded,
-		    assertion_failed, passes_left ;
+		    assertion_failed, runtime_error, passes_left ;
 		const get_iteration_count = () => max_iterations - vm_state.get_iteration_counter();
 
 		for (let attempt = 0; attempt < 2; attempt++) {
@@ -336,12 +336,17 @@ const vm = (() => {
 
 			iteration_budget_exceeded = false;
 			assertion_failed = false;
+			runtime_error = null;
 			passes_left = n_passes;
 			while (passes_left > 0 && vm_state.can_run()) {
 				if (vm_state.did_exit()) {
 					break;
 				}
 				vm_state.run();
+				if (vm_state.did_throw()) {
+					runtime_error = vm_state.get_exception();
+					break;
+				}
 				if (!vm_state.did_exit()) {
 					if (vm_state.broke_at_breakpoint()) {
 						if (deepeq(vm_state.pc(-1), brkpos)) {
@@ -366,14 +371,16 @@ const vm = (() => {
 				}
 			}
 
-			if (passes_left === 0 || assertion_failed || (attempt === 0 && iteration_budget_exceeded)) {
+			if (passes_left === 0 || assertion_failed || runtime_error || (attempt === 0 && iteration_budget_exceeded)) {
 				break;
 			}
 			iteration_budget_exceeded = false;
 		}
 
 		let error = null;
-		if (assertion_failed) {
+		if (runtime_error) {
+			error = "runtime error " + runtime_error;
+		} else if (assertion_failed) {
 			error = "assertion failed";
 		} else if (iteration_budget_exceeded) {
 			error = "at max iterations (" + max_iterations + ")";
