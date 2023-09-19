@@ -79,7 +79,9 @@ const tokmod = (() => {
 })();
 
 const filesys = (() => {
-	const shadow_map = {};
+	const unsaved_changes = {};
+	// ^^ reported by editor via LSP; this "filesystem view" sees these
+	// unsaved changes, otherwise the actual file on disk.
 
 	function assert_full_path(p) {
 		if (!path.isAbsolute(p)) throw new Error("expected full path, got: " + p);
@@ -96,19 +98,19 @@ const filesys = (() => {
 		}
 	}
 
-	function shadow_set(uri, contents) {
-		shadow_map[uri_to_full_path(uri)] = contents;
+	function unsaved_set(uri, contents) {
+		unsaved_changes[uri_to_full_path(uri)] = contents;
 	}
 
-	function shadow_forget(uri) {
-		delete shadow_map[uri_to_full_path(uri)];
+	function unsaved_forget(uri) {
+		delete unsaved_changes[uri_to_full_path(uri)];
 	}
 
 	function read_full_path(fp) {
 		assert_full_path(fp);
 		let data;
-		if (shadow_map[fp] !== undefined) {
-			data = shadow_map[fp];
+		if (unsaved_changes[fp] !== undefined) {
+			data = unsaved_changes[fp];
 		} else {
 			data = fs.readFileSync(fp, {"encoding": "utf8"});
 		}
@@ -124,8 +126,8 @@ const filesys = (() => {
 		uri_to_full_path,
 		read_full_path,
 		read_uri,
-		shadow_set,
-		shadow_forget,
+		unsaved_set,
+		unsaved_forget,
 	};
 })();
 
@@ -205,34 +207,6 @@ function lsp_tokenize(uri) {
 	return r;
 }
 
-function deepeq(a,b) {
-	const ta = typeof a;
-	const tb = typeof b;
-	if (ta !== tb) return false;
-	if ((a === null) !== (b === null)) return false;
-	if (a === null) return true;
-	if (ta !== "object") return a === b;
-	if (a instanceof Array && b instanceof Array) {
-		if (a.length !== b.length) return false;
-		for (let i = 0; i < a.length; i++) {
-			if (!deepeq(a[i],b[i])) return false;
-		}
-		return true;
-	} else {
-		const ka = Object.keys(a);
-		const kb = Object.keys(b);
-		if (ka.length !== kb.length) return false;
-		ka.sort();
-		kb.sort();
-		for (let i = 0; i < ka.length; i++) {
-			if (ka[i] !== kb[i]) return false;
-			const k = ka[i];
-			if (!deepeq(a[k], b[k])) return false;
-		}
-		return true;
-	}
-}
-
 const poll_state = (() => {
 	let serial = 1;
 	let packed_state = JSON.stringify([serial,null]);
@@ -270,7 +244,7 @@ const vm = (() => {
 	let vm = null;
 	let root;
 	let entrypoint_filename = null;
-	let entrypoint_word = null;
+	let entrypoint_word_path = null;
 
 	function mk_compiler() {
 		return create_compiler((filename) => filesys.read_full_path(path.join(root, filename)));
@@ -281,19 +255,21 @@ const vm = (() => {
 			"n_passes": n_passes,
 			"max_iterations": max_iterations,
 			"entrypoint_filename": entrypoint_filename,
-			"entrypoint_word": entrypoint_word,
+			"entrypoint_word_path": entrypoint_word_path,
 			...o,
 		});
 	}
 
+	function eq(p0, p1) { return JSON.stringify(p0) === JSON.stringify(p1); }
+
 	function rerun() {
 		actual_passes = null;
-		if (entrypoint_word === null) return;
+		if (entrypoint_word_path === null) return;
 		const cc = mk_compiler();
 		let prg;
 		try {
 			const cu = cc.compile(entrypoint_filename);
-			prg = cu.trace_program_debug((depth,name) => name === entrypoint_word);
+			prg = cu.trace_program_debug((p) => p === entrypoint_word_path);
 		} catch (e) {
 			if (e instanceof Array) {
 				const loc = !e[0] ? "N/A" : e[0][0] + ":" + (1+e[0][1]) + ":" + e[0][2] + "-" +e[0][3] ;
@@ -304,7 +280,9 @@ const vm = (() => {
 			return;
 		}
 		if (prg.export_word_indices.length !== 1) {
-			LOG("expected 1 exported word, got " + prg.export_word_indices.length);
+			const msg = "expected 1 exported word, got " + prg.export_word_indices.length;
+			LOG(msg);
+			publish({error: "INTERNAL ERROR: " + msg});
 			return;
 		}
 
@@ -317,6 +295,7 @@ const vm = (() => {
 			];
 
 			brkpos = cc.find_2lvl_position_at_or_after(prg.dbg_words, curpos[0], curpos[1], curpos[2]);
+
 			if (brkpos) {
 				prg.set_breakpoint_at(brkpos);
 			}
@@ -349,7 +328,7 @@ const vm = (() => {
 				}
 				if (!vm_state.did_exit()) {
 					if (vm_state.broke_at_breakpoint()) {
-						if (deepeq(vm_state.pc(-1), brkpos)) {
+						if (eq(vm_state.pc(-1), brkpos)) {
 							passes_left--;
 							last_attempt_iteration_count = get_iteration_count() - 1;
 							vm_state.continue_after_user_breakpoint();
@@ -395,7 +374,7 @@ const vm = (() => {
 	}
 
 	function set_position(pos) {
-		if (deepeq(cursor_position, pos)) return;
+		if (eq(cursor_position, pos)) return;
 		cursor_position = pos;
 		rerun();
 	}
@@ -403,16 +382,14 @@ const vm = (() => {
 	function set_entrypoint_at_position(pos) {
 		const fp = filesys.uri_to_full_path(pos.uri);
 		root = path.dirname(fp);
-		entrypoint_word = null;
+		entrypoint_word_path = null;
 		const cc = mk_compiler();
 		const filename = path.basename(fp);
 		entrypoint_filename = filename;
 		const state = cc.tokenize_file(filename);
-		//LOG("TOK!" + JSON.stringify(tokens));
-		const word = cc.find_word(state, filename, pos.line-1, pos.column);
-		LOG("word: " + word);
-		if (word) {
-			entrypoint_word = word;
+		const word_path = cc.find_word_path(state, filename, pos.line-1, pos.column);
+		if (word_path) {
+			entrypoint_word_path = word_path;
 			rerun();
 		}
 	}
@@ -536,21 +513,21 @@ function process_client_message(msg) {
 		const uri = p.textDocument.uri;
 		//LOG(JSON.stringify(["OPEN",version,uri,text]));
 		invoke("workspace/semanticTokens/refresh");
-		filesys.shadow_set(uri, text);
+		filesys.unsaved_set(uri, text);
 	} else if (m === "textDocument/didChange") {
 		const text = p.contentChanges[0].text;
 		const version = p.textDocument.version;
 		const uri = p.textDocument.uri;
 		//LOG("didchange"+JSON.stringify([version,uri,text]));
 		invoke("workspace/semanticTokens/refresh");
-		filesys.shadow_set(uri, text);
+		filesys.unsaved_set(uri, text);
 		vm.rerun();
 	} else if (m === "textDocument/didClose") {
 		const uri = p.textDocument.uri;
-		filesys.shadow_forget(uri);
+		filesys.unsaved_forget(uri);
 	} else if (m === "textDocument/didSave") {
 		const uri = p.textDocument.uri;
-		filesys.shadow_forget(uri);
+		filesys.unsaved_forget(uri);
 		vm.rerun();
 	} else if (m === "textDocument/semanticTokens/full") {
 		//LOG("TOK:"+JSON.stringify(p));

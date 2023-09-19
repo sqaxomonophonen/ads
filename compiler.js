@@ -366,24 +366,61 @@ function new_compiler(read_file_fn) {
 		return best_position;
 	}
 
-	function find_word(state, filename, line, column) {
+	function span_contains(line0, col0, line1, col1, line, col) {
+		if (line < line0 || line1 < line) return false;
+		if (line0 < line && line < line1) return true;
+		if (line === line0) return col >= col0;
+		if (line === line1) return col1 > col;
+		throw new Error("UNREACHABLE");
+	}
+
+	function get_word_spans(state) {
 		const n = state.positions.length;
-		const word_stack = [];
+		let word_stack = [];
+		let word;
+		let word_spans = [];
 		for (let i = 0; i < n; i++) {
 			const token = state.tokens[i];
 			const t = token[0];
-			if (t === BEGIN_WORD || t === BEGIN_TABLE_WORD || t === BEGIN_INLINE_WORD) {
-				word_stack.push(token[1]);
-			}
 			const pos = state.positions[i];
-			if (pos[0] === filename && (pos[1] > line || (pos[1] === line && pos[2] >= column))) {
-				return word_stack.pop();
+			if (t === BEGIN_WORD || t === BEGIN_TABLE_WORD || t === BEGIN_INLINE_WORD) {
+				word = {
+					name:     token[1],
+					subwords: [],
+					filename: pos[0],
+					line0:    pos[1],
+					col0:     pos[2],
+				};
+				if (word_stack.length === 0) {
+					word_spans.push(word);
+				} else {
+					word_stack[word_stack.length-1].subwords.push(word);
+				}
+				word_stack.push(word);
 			}
 			if (t === END_WORD) {
+				word.line1 = pos[1];
+				word.col1 = pos[3];
 				word_stack.pop();
+				word = word_stack.length > 0 ? word_stack[word_stack.length-1] : undefined;
 			}
 		}
-		return undefined;
+		return word_spans;
+	}
+
+	function find_word_path(state, filename, line, column) {
+		const words = get_word_spans(state);
+		function find(words) {
+			for (const word of words) {
+				if (word.filename !== filename || !span_contains(word.line0, word.col0, word.line1, word.col1, line, column)) {
+					continue;
+				}
+				const sub = find(word.subwords);
+				return word.name + (sub ? ":"+sub : "");
+			}
+			return "";
+		}
+		return find(words);
 	}
 
 	function compile(filename, is_release) {
@@ -462,7 +499,7 @@ function new_compiler(read_file_fn) {
 
 		const vm4stub_lines = read_file_fn("vm4stub.js").split("\n");
 
-		function trace_program(match_fn, is_debug) {
+		function trace_program(match_word_path_fn, is_debug) {
 			const lift_set = new Set();
 			let prg_words = [];
 			function uplift_word(word_stack, inline_ops) {
@@ -552,7 +589,7 @@ function new_compiler(read_file_fn) {
 
 			function rec(word_stack) {
 				const word = word_stack[word_stack.length-1];
-				if (word.name && match_fn(word_stack.length-2, word.name)) {
+				if (word.name && match_word_path_fn(word_stack.slice(1).map(x=>x.name).join(":"))) {
 					word.do_export = true;
 					uplift_word(word_stack);
 				}
@@ -750,10 +787,9 @@ function new_compiler(read_file_fn) {
 							const ise = ISA[i];
 							if (ise[0] !== typ || ise[1] !== op) continue;
 							opcode = op_remap[i];
-							if (opcode === undefined) throw new Error("no mapping for " + key);
 							break;
 						}
-						if (opcode === undefined) throw new Error("not found: " + key);
+						if (opcode === undefined) opcode = null;
 						cache[key] = opcode;
 					}
 					return cache[key];
@@ -791,7 +827,7 @@ function new_compiler(read_file_fn) {
 				const pc0 = () => raw[PC0];
 				const pc1 = () => raw[PC1];
 				const pc = (delta) => [pc0(), pc1()+(delta|0)];
-				const get_op = () => vm_words[pc0()][pc1()-1];
+				const get_pc_op = (d) => vm_words[pc0()][pc1()+(d|0)];
 				const get_position = () => dbg_words[pc0()][pc1()-1];
 				const get_iteration_counter =  () => raw[ITERATION_COUNT];
 				const set_iteration_counter = (n) => raw[ITERATION_COUNT] = Math.ceil(n);
@@ -814,19 +850,53 @@ function new_compiler(read_file_fn) {
 					});
 				}
 
-				function continue_after_user_breakpoint() {
-					// "old school" remove-breakpoint => single-step => reset-breakpoint => continue
-					// this is because adhoc breakpoints are implemented by overwriting
-					// instructions with brk instructions. this is much preferable to
-					// rstack corruption bugs (if brk was instead inserted/deleted)
-					// and VM bloat (gotta keep it small)
+				function single_step() {
 					const tmp = get_iteration_counter();
-					rewind(1);
-					const brkpos = pc();
-					remove_breakpoint();
 					set_iteration_counter(1); // prepare single-step
 					run(); // single-step
 					set_iteration_counter(tmp-1); // restore iteration counter
+				}
+
+				function pceq(p0, p1) {
+					return p0[0] === p1[0] && p0[1] === p1[1];
+				}
+
+				function goto_pc_plus_one_at_breakpoint() {
+					const bp1 = pc();
+					bp1[1]++;
+					set_breakpoint_at(bp1);
+					for (;;) {
+						run();
+						if (pceq(pc(-1), bp1)) {
+							break;
+						}
+					}
+					remove_breakpoint_at(bp1);
+				}
+
+				function is_call() {
+					const op = get_pc_op();
+					return op[0] === opresolv(CALL) || op[0] === opresolv(WORD, "call");
+				}
+
+				function continue_after_user_breakpoint() {
+					rewind(1);
+					remove_breakpoint();
+					const brkpos = pc();
+					// there are two methods for executing
+					// up until and including the op under
+					// the cursor, and neither of them work
+					// for all cases. single stepping works
+					// for everything except calls (because
+					// you single-step into the function
+					// call, and not over it), and goto
+					// pc+1 works for everything except
+					// loops.
+					if (is_call()) {
+						goto_pc_plus_one_at_breakpoint();
+					} else {
+						single_step();
+					}
 					set_breakpoint_at(brkpos); // restore breakpoint
 				}
 
@@ -860,8 +930,8 @@ function new_compiler(read_file_fn) {
 					did_exit: () => raw[PC0] < 0,
 					did_throw: () => !!raw[EXC],
 					get_exception:  () => raw[EXC],
-					broke_at_assertion:   () => get_op()[0] === opresolv(WORD, "assert"),
-					broke_at_breakpoint:  () => get_op()[0] === brk(),
+					broke_at_assertion:   () => get_pc_op(-1)[0] === opresolv(WORD, "assert"),
+					broke_at_breakpoint:  () => get_pc_op(-1)[0] === brk(),
 					get_position,
 					pc,
 					get_position_human: () => {
@@ -906,8 +976,8 @@ function new_compiler(read_file_fn) {
 		}
 
 		return {
-			trace_program_debug:   match_fn => trace_program(match_fn, true),
-			trace_program_release: match_fn => trace_program(match_fn, false),
+			trace_program_debug:   match_word_path_fn => trace_program(match_word_path_fn, true),
+			trace_program_release: match_word_path_fn => trace_program(match_word_path_fn, false),
 		};
 	}
 
@@ -923,7 +993,7 @@ function new_compiler(read_file_fn) {
 		compile_release: f=>compile(f,true),
 		is_test_word,
 		is_main_word,
-		find_word,
+		find_word_path,
 		find_2lvl_position_at_or_after,
 	};
 }
