@@ -27,6 +27,10 @@ function TEST(name, fn) {
 	}
 }
 
+function NOTEST(name, fn) {
+	console.log("NOTEST " + name);
+}
+
 function ASSERT_SAME(what, actual, expected) {
 	const actual_json = JSON.stringify(actual);
 	const expected_json = JSON.stringify(expected);
@@ -191,6 +195,70 @@ TEST("breakpoints 102 (loops)", () => {
 	let expected_stack = [];
 	for (let i = 0; i < 5; i++) {
 		vm_state.run();
+		ASSERT_SAME("stack", vm_state.get_stack(), expected_stack);
+		vm_state.continue_after_user_breakpoint();
+		expected_stack.push(69);
+		ASSERT_SAME("stack", vm_state.get_stack(), expected_stack);
+	}
+});
+
+TEST("breakpoints 103 (precision)", () => {
+	const FILENAME = "<test.4st>";
+	const cc = create_compiler(mk_filesys({[FILENAME]:
+`:w0rd
+0 1 2 3
+;
+	`}));
+	const cu = cc.compile(FILENAME);
+	const prg = cu.trace_program_debug((word_path) => word_path === "w0rd");
+	if (prg.export_word_indices.length !== 1) throw new TRR("expected 1 exported word index, got: " + JSON.stringify(prg.export_word_indices));
+
+	let brkpos;
+	for (let column = 0; column <= 6; column++) {
+		if (brkpos) prg.remove_breakpoint_at(brkpos);
+		brkpos = cc.find_2lvl_position_at_or_after(prg.dbg_words, FILENAME, 1, column);
+		prg.set_breakpoint_at(brkpos);
+		const vm_state = prg.new_state();
+		vm_state.set_pc_to_export_word_index(0);
+		vm_state.set_iteration_counter(1e3);
+		let expected_stack = [];
+		vm_state.run();
+		let i;
+		for (i = 0; i < (column/2|0); i++) expected_stack.push(i);
+		ASSERT_SAME("stack", vm_state.get_stack(), expected_stack);
+		vm_state.continue_after_user_breakpoint();
+		expected_stack.push(i);
+		ASSERT_SAME("stack", vm_state.get_stack(), expected_stack);
+	}
+});
+
+NOTEST("breakpoints 201 (step over)", () => {
+	const FILENAME = "<test.4st>";
+	const cc = create_compiler(mk_filesys({[FILENAME]:
+`:w0rd
+   :w3rd
+      420 666 drop drop 69
+   ;
+   5 times
+      1 w3rd 2
+   loop
+;
+	`}));
+	const cu = cc.compile(FILENAME);
+	const prg = cu.trace_program_debug((word_path) => word_path === "w0rd");
+	if (prg.export_word_indices.length !== 1) throw new TRR("expected 1 exported word index, got: " + JSON.stringify(prg.export_word_indices));
+
+	const vm_state = prg.new_state();
+	vm_state.set_pc_to_export_word_index(0);
+	vm_state.set_iteration_counter(1e3);
+
+	prg.set_breakpoint_at(cc.find_2lvl_position_at_or_after(prg.dbg_words, FILENAME, 5, 6));
+
+	let expected_stack = [];
+	for (let i = 0; i < 5; i++) {
+		//console.log(i, vm_state.get_raw());
+		vm_state.run();
+		//console.log(i, vm_state.get_raw());
 		ASSERT_SAME("stack", vm_state.get_stack(), expected_stack);
 		vm_state.continue_after_user_breakpoint();
 		expected_stack.push(69);
