@@ -252,17 +252,17 @@ NOTEST("breakpoints 201 (step over)", () => {
 	vm_state.set_pc_to_export_word_index(0);
 	vm_state.set_iteration_counter(1e3);
 
-	prg.set_breakpoint_at(cc.find_2lvl_position_at_or_after(prg.dbg_words, FILENAME, 5, 6));
+	prg.set_breakpoint_at(cc.find_2lvl_position_at_or_after(prg.dbg_words, FILENAME, 5, 8));
 
 	let expected_stack = [];
 	for (let i = 0; i < 5; i++) {
-		//console.log(i, vm_state.get_raw());
 		vm_state.run();
-		//console.log(i, vm_state.get_raw());
+		expected_stack.push(1);
 		ASSERT_SAME("stack", vm_state.get_stack(), expected_stack);
 		vm_state.continue_after_user_breakpoint();
 		expected_stack.push(69);
 		ASSERT_SAME("stack", vm_state.get_stack(), expected_stack);
+		expected_stack.push(2);
 	}
 });
 
