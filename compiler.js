@@ -576,7 +576,7 @@ function new_compiler(read_file_fn) {
 										];
 									}
 								} else {
-									throw new Error("UNREACHABLE");
+									throw new Error("UNREACHABLE/" + ii);
 								}
 							}
 						}
