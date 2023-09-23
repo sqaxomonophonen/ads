@@ -236,6 +236,24 @@ TEST("breakpoints 103 (multiple on same line)", () => {
 	}
 });
 
+TEST("breakpoints 104 (precision)", () => {
+	const vm_state = prep_brk_test(`
+		:main
+		0 (BRK) 1 (BRK)2 3
+		;
+	`);
+
+	vm_state.run();
+	vm_state.step_over();
+	ASSERT_SAME("stack", vm_state.get_stack(), [0]);
+	vm_state.run();
+	vm_state.step_over();
+	ASSERT_SAME("stack", vm_state.get_stack(), [0,1,2]);
+	vm_state.run();
+	ASSERT_SAME("stack", vm_state.get_stack(), [0,1,2,3]);
+});
+
+
 TEST("breakpoints 201 (step over word)", () => {
 	const vm_state = prep_brk_test(`
 		:main
@@ -299,6 +317,32 @@ TEST("breakpoints 301 (at end-of-word)", () => {
 		ASSERT_SAME("stack", vm_state.get_stack(), expected_stack);
 	}
 
+});
+
+TEST("breakpoints 302 (if/else/endif)", () => {
+	function test(body, expected_stacks) {
+		const vm_state = prep_brk_test(":main " + body + " ;");
+		while (expected_stacks.length > 0) {
+			vm_state.run();
+			if (expected_stacks.length >= 2) vm_state.step_over();
+			ASSERT_SAME("stack", vm_state.get_stack(), expected_stacks.pop());
+		}
+	}
+
+	test("1 if 420 else 666 endif",      [[420]]);
+	test("1 if (BRK)420 else 666 endif", [[420], [420]]);
+	test("1 if 420 (BRK)else 666 endif", [[420], [420]]);
+	test("0 if 420 else (BRK)666 endif", [[666], [666]]);
+	test("0 if 420 else 666 (BRK)endif", [[666], [666]]);
+
+	// XXX these are broken...
+	//test("(BRK)1 if 420 else 666 endif", [[1], [420]]);
+	//test("(BRK)0 if 420 else 666 endif", [[0], [666]]);
+	//test("69 (BRK)1 if 420 else 666 endif", [[69, 1], [69, 420]]);
+	//test("69 (BRK)0 if 420 else 666 endif", [[69, 0], [69, 666]]);
+	//test("1 (BRK)if 420 else 666 endif", [[], [420]]);
+	// XXX this one goes into an infinite loop! tasty!
+	//test("1 if 420 else 666 endif (BRK)", [[420], [420]]);
 });
 
 {
