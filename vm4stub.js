@@ -187,9 +187,9 @@
 	/*ST4{DEBUG*/
 	push_op(
 		_ => !POP(), // assert
-		_ => (dump_callback(bundle_state()),0),
+		_ => { dump_callback(bundle_state()); return false; }, // dump
 		_ => true, // brk
-		_ => (value_type_tag_map.set(TOP(),1),0) // _DTGRAPH
+		_ => { value_type_tag_map.set(TOP(),1); return false; }, // _DTGRAPH
 	);
 	/*ST4}DEBUG*/
 

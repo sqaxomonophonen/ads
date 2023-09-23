@@ -376,8 +376,8 @@ TEST("breakpoints 203 (if/else/endif)", () => {
 	test("1 if 420 else 666 (BRK)endif 69", [[420], [420,69]]);
 	test("0 if 420 else 666 endif (BRK) 69", [[666], [666,69]]);
 	test("1 if 420 else 666 endif (BRK) 69", [[420], [420,69]]);
-	test("0 if 420 else 666 endif (BRK) 69 790", [[666], [666,69,790]]);
-	test("1 if 420 else 666 endif (BRK) 69 790", [[420], [420,69,790]]);
+	test("0 if 420 else 666 endif   (BRK)   69 790", [[666], [666,69,790]]);
+	test("1 if 420 else 666 endif   (BRK)   69 790", [[420], [420,69,790]]);
 	test("0 if 420 else 666 endif (BRK)69", [[666,69], [666,69]]);
 	test("1 if 420 else 666 endif (BRK)69", [[420,69], [420,69]]);
 	test("0 if 420 else 666 endif (BRK)", [[666], [666]]);
