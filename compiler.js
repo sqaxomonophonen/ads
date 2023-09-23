@@ -842,6 +842,9 @@ function new_compiler(read_file_fn) {
 					raw[PC1]--;
 				}
 
+				function is_temporary_breakpoint(delta) {
+					return is_temporary_breakpoint_at(pc(delta));
+				}
 				function set_breakpoint(delta) {
 					set_breakpoint_at(pc(delta));
 				}
@@ -876,6 +879,8 @@ function new_compiler(read_file_fn) {
 						if (pceq(pc(-1), bp1)) {
 							rewind();
 							break;
+						} else {
+							step_over();
 						}
 					}
 					remove_breakpoint_at(bp1);
@@ -886,9 +891,10 @@ function new_compiler(read_file_fn) {
 					return op[0] === opresolv(CALL) || op[0] === opresolv(WORD, "call");
 				}
 
-				function continue_after_user_breakpoint() {
+				function step_over() {
 					rewind();
-					remove_breakpoint();
+					const is_usr_brk = is_temporary_breakpoint();
+					if (is_usr_brk) remove_breakpoint();
 					const brkpos = pc();
 					// there are two methods for executing
 					// up until and including the op under
@@ -904,7 +910,7 @@ function new_compiler(read_file_fn) {
 					} else {
 						single_step();
 					}
-					set_breakpoint_at(brkpos); // restore breakpoint
+					if (is_usr_brk) set_breakpoint_at(brkpos); // restore breakpoint
 				}
 
 				const get_stack  = () => raw[STACK];
@@ -952,7 +958,7 @@ function new_compiler(read_file_fn) {
 						raw[PC0] = export_word_indices[i];
 						raw[PC1] = 0;
 					},
-					continue_after_user_breakpoint,
+					step_over,
 					run,
 					get_tagged_stack,
 					set_dump_callback,

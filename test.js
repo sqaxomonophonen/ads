@@ -185,13 +185,13 @@ TEST("breakpoints 101 (flat)", () => {
 	// "333" has not yet been executed:
 	ASSERT_SAME("stack", vm_state.get_stack(), [111,222]);
 	// single-step...
-	vm_state.continue_after_user_breakpoint();
+	vm_state.step_over();
 	ASSERT_SAME("stack", vm_state.get_stack(), [111,222,333]);
 
 	// breakpoint at "666", samey samey...
 	vm_state.run();
 	ASSERT_SAME("stack", vm_state.get_stack(), [111,222,333,444,555]);
-	vm_state.continue_after_user_breakpoint();
+	vm_state.step_over();
 	ASSERT_SAME("stack", vm_state.get_stack(), [111,222,333,444,555,666]);
 
 	// finish program
@@ -212,7 +212,7 @@ TEST("breakpoints 102 (loops)", () => {
 	for (let i = 0; i < 5; i++) {
 		vm_state.run();
 		ASSERT_SAME("stack", vm_state.get_stack(), expected_stack);
-		vm_state.continue_after_user_breakpoint();
+		vm_state.step_over();
 		expected_stack.push(69);
 		ASSERT_SAME("stack", vm_state.get_stack(), expected_stack);
 	}
@@ -229,7 +229,7 @@ TEST("breakpoints 103 (on same line)", () => {
 	for (let i = 0; i < 4; i++) {
 		ASSERT_SAME("stack", vm_state.get_stack(), expected_stack);
 		vm_state.run();
-		vm_state.continue_after_user_breakpoint();
+		vm_state.step_over();
 		expected_stack.push(i);
 		ASSERT_SAME("stack", vm_state.get_stack(), expected_stack);
 	}
@@ -239,7 +239,7 @@ TEST("breakpoints 201 (step over)", () => {
 	const vm_state = prep_brk_test(`
 		:main
 		   :w0rd
-		      420 666 drop drop 69
+		      420 666 brk drop drop 69
 		   ;
 		   5 times
 		      11 1 (BRK)w0rd 2 22
@@ -253,7 +253,7 @@ TEST("breakpoints 201 (step over)", () => {
 		expected_stack.push(11);
 		expected_stack.push(1);
 		ASSERT_SAME("stack", vm_state.get_stack(), expected_stack);
-		vm_state.continue_after_user_breakpoint();
+		vm_state.step_over();
 		expected_stack.push(69);
 		ASSERT_SAME("stack", vm_state.get_stack(), expected_stack);
 		expected_stack.push(2);
