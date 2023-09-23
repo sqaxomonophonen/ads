@@ -1,11 +1,12 @@
 uv = require("luv")
 
-function ADS()
-	vim.lsp.start({
-		name = 'hack4st',
-		cmd      = ADS_CMD,
-		root_dir = ADS_ROOT_DIR,
-	})
+local ADS_initialized = false
+
+function ADS_initialize()
+	if ADS_initialized then
+		return
+	end
+	ADS_initialized = true
 
 	local function get_pos()
 		local cursor = vim.api.nvim_win_get_cursor(0)
@@ -68,6 +69,15 @@ function ADS()
 	vim.keymap.set('n', '<C-u>', function() max_iterations_scale(2) end)
 	vim.keymap.set('n', '<C-j>', function() max_iterations_scale(0.5) end)
 
+end
+
+function ADS()
+	ADS_initialize()
+	vim.lsp.start({
+		name = 'hack4st',
+		cmd      = ADS_CMD,
+		root_dir = ADS_ROOT_DIR,
+	})
 end
 
 vim.cmd(":command! ADS :lua ADS()")
