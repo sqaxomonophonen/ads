@@ -788,46 +788,72 @@ function new_compiler(read_file_fn) {
 				};
 			})();
 
-			const brk = () => opresolv(WORD, "brk");
-			const rtrn = () => opresolv(WORD, "return");
+			const [
+				BRK,
+				RETURN,
+				ELSE, ENDIF,
+			] = [
+				"brk",
+				"return",
+				"else", "endif",
+			].map(name => opresolv(WORD, name));
 
-			function get_op(word_op_position) {
-				const [ wi, oi ] = word_op_position;
+			function get_op(word_op_pos) {
+				const [ wi, oi ] = word_op_pos;
 				if (!(0 <= wi && wi < vm_words.length)) throw new Error("invalid word index: " + wi);
 				const ops = vm_words[wi];
 				// XXX I'm slightly scared about modifying the
 				// actual program here... but how else do I
 				// support setting a breakpoint at end-of-word
 				// plus one (which is an implicit return)?
-				if (oi === ops.length) ops[oi] = [rtrn()];
+				if (oi === ops.length) ops[oi] = [RETURN];
 				return ops[oi]
 			}
+
+			function resolv_brk_pos(word_op_pos) {
+				for (;;) {
+					if (word_op_pos[1] < 0) throw new Error("search out of bounds");
+					const op = get_op(word_op_pos);
+					if (op[0] === ELSE || op[0] === ENDIF) {
+						// it's problematic to set breakpoints at else/endif
+						// because they're "weird" and also used as "markers".
+						// so set breakpoint at previous position
+						word_op_pos = [ word_op_pos[0], word_op_pos[1]-1 ];
+					} else {
+						return word_op_pos;
+					}
+				}
+			}
+
 
 			// temporary breakpoints abuse that ops are tuples, so
 			// [sqrt] becomes [brk, sqrt], and [PUSH_IMM, 42]
 			// becomes [brk, PUSH_IMM, 42]. this makes it easy to
 			// disable the breakpoint by .slice(1)'ing it
 
-			function is_temporary_breakpoint_at(word_op_position) {
-				const op = get_op(word_op_position);
-				return op.length >= 2 && op[0] === brk();
+			function is_temporary_breakpoint_at(word_op_pos) {
+				word_op_pos = resolv_brk_pos(word_op_pos);
+				const op = get_op(word_op_pos);
+				return op.length >= 2 && op[0] === BRK;
 			}
 
-			function set_breakpoint_at(word_op_position) {
-				if (is_temporary_breakpoint_at(word_op_position)) {
+			function set_breakpoint_at(word_op_pos) {
+				word_op_pos = resolv_brk_pos(word_op_pos);
+				if (is_temporary_breakpoint_at(word_op_pos)) {
 					throw new Error("breakpoint already there");
 					return;
 				}
-				const op = get_op(word_op_position);
-				op.unshift(brk());
+				const op = get_op(word_op_pos);
+				op.unshift(BRK);
 			}
 
-			function remove_breakpoint_at(word_op_position) {
-				if (!is_temporary_breakpoint_at(word_op_position)) {
+			function remove_breakpoint_at(word_op_pos) {
+				word_op_pos = resolv_brk_pos(word_op_pos);
+				if (!is_temporary_breakpoint_at(word_op_pos)) {
 					throw new Error("no breakpoint to remove");
 					return;
 				}
-				const op = get_op(word_op_position);
+				const op = get_op(word_op_pos);
 				op.shift();
 			}
 
@@ -857,7 +883,17 @@ function new_compiler(read_file_fn) {
 					remove_breakpoint_at(pc(delta));
 				}
 
+				const has_ended = () => raw[PC0] < 0;
+				const has_iterations_left = () => raw[ITERATION_COUNT] > 0;
+				const can_run = () => !has_ended() && has_iterations_left();
+
+				function assert_can_run() {
+					if (has_ended()) throw new Error("cannot run(); program has ended");
+					if (!has_iterations_left()) throw new Error("cannot run(); no iterations left");
+				}
+
 				function run() {
+					assert_can_run();
 					raw = vm(vm_words, raw, (_raw) => {
 						raw = _raw;
 						dump_callback_fn(self);
@@ -897,6 +933,7 @@ function new_compiler(read_file_fn) {
 				}
 
 				function step_over() {
+					assert_can_run();
 					rewind();
 					const is_usr_brk = is_temporary_breakpoint();
 					if (is_usr_brk) remove_breakpoint();
@@ -940,7 +977,7 @@ function new_compiler(read_file_fn) {
 
 				self = {
 					get_raw: () => raw,
-					can_run: () => raw[PC0] >= 0 && raw[ITERATION_COUNT] > 0,
+					can_run,
 					get_iteration_counter,
 					set_iteration_counter,
 					get_stack,
@@ -949,7 +986,7 @@ function new_compiler(read_file_fn) {
 					did_throw: () => !!raw[EXC],
 					get_exception:  () => raw[EXC],
 					broke_at_assertion:   () => get_pc_op(-1)[0] === opresolv(WORD, "assert"),
-					broke_at_breakpoint:  () => get_pc_op(-1)[0] === brk(),
+					broke_at_breakpoint:  () => get_pc_op(-1)[0] === BRK,
 					get_position,
 					pc,
 					get_position_human: () => {

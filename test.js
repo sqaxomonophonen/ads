@@ -324,25 +324,34 @@ TEST("breakpoints 302 (if/else/endif)", () => {
 		const vm_state = prep_brk_test(":main " + body + " ;");
 		while (expected_stacks.length > 0) {
 			vm_state.run();
-			if (expected_stacks.length >= 2) vm_state.step_over();
+			if (vm_state.can_run()) vm_state.step_over();
 			ASSERT_SAME("stack", vm_state.get_stack(), expected_stacks.shift());
 		}
+		if (vm_state.can_run()) throw new TRR("expected program to end; are there missing ''expected stacks''?");
 	}
-
+	// FUN FACT: most of these tests have failed at some point, and for a
+	// bunch of different reasons
 	test("1 if 420 else 666 endif",      [[420]]);
 	test("1 if (BRK)420 else 666 endif", [[420], [420]]);
 	test("1 if 420 (BRK)else 666 endif", [[420], [420]]);
-	//test("0 if 420 (BRK)else 666 endif", [[420], [420]]); // XXX invalid word index -1
+	test("0 if 420 (BRK)else 666 endif", [[666]]);
 	test("0 if 420 else (BRK)666 endif", [[666], [666]]);
 	test("0 if 420 else 666 (BRK)endif", [[666], [666]]);
-	//test("1 if 420 else 666 (BRK)endif", [[420], [420]]); // XXX infinite loop
+	test("1 if 420 else 666 (BRK)endif", [[420]]);
 	test("(BRK)1 if 420 else 666 endif", [[1], [420]]);
 	test("(BRK)0 if 420 else 666 endif", [[0], [666]]);
 	test("69 (BRK)1 if 420 else 666 endif", [[69, 1], [69, 420]]);
 	test("69 (BRK)0 if 420 else 666 endif", [[69, 0], [69, 666]]);
 	test("1 (BRK)if 420 else 666 endif", [[], [420]]);
 	test("1 if 420 else 666 endif (BRK)5", [[420,5], [420,5]]);
-	//test("1 if 420 else 666 endif (BRK)", [[420], [420]]); // XXX this one goes into an infinite loop! tasty!
+	test("1 if 420 else 666 endif (BRK)", [[420]]);
+
+	// XXX these tests fail to set a breakpoint in the "void" between
+	// "endif" and "69"
+	//test("1 if 420 else 666 endif   (BRK)   69", [[420], [420,69]]);
+	// XXX this one gives the correct answer for the wrong reason :-) (BRK
+	// falls back to "666")
+	test("0 if 420 else 666 endif   (BRK)   69", [[666], [666,69]]);
 });
 
 {
