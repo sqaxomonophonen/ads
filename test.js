@@ -40,6 +40,10 @@ function ASSERT_SAME(what, actual, expected) {
 	}
 }
 
+function ASSERT_DONE(vm_state) {
+	if (vm_state.can_run()) throw new TRR("expected program to end");
+}
+
 TEST("find word path", () => {
 
 const SRC =
@@ -200,26 +204,7 @@ TEST("breakpoints 101 (simple stuff)", () => {
 	ASSERT_SAME("stack", vm_state.get_stack(), [111,222,333,444,555,666,777,888]);
 });
 
-TEST("breakpoints 102 (inside loop)", () => {
-	const vm_state = prep_brk_test(`
-		:main
-		   5 times
-		      (BRK)69
-		   loop
-		;
-	`);
-
-	let expected_stack = [];
-	for (let i = 0; i < 5; i++) {
-		vm_state.run();
-		ASSERT_SAME("stack", vm_state.get_stack(), expected_stack);
-		vm_state.step_over();
-		expected_stack.push(69);
-		ASSERT_SAME("stack", vm_state.get_stack(), expected_stack);
-	}
-});
-
-TEST("breakpoints 103 (multiple on same line)", () => {
+TEST("breakpoints 102 (multiple on same line)", () => {
 	const vm_state = prep_brk_test(`
 		:main
 		(BRK)0 (BRK)1 (BRK)2 (BRK)3
@@ -236,7 +221,7 @@ TEST("breakpoints 103 (multiple on same line)", () => {
 	}
 });
 
-TEST("breakpoints 104 (precision)", () => {
+TEST("breakpoints 103 (precision)", () => {
 	const vm_state = prep_brk_test(`
 		:main
 		0 (BRK) 1 (BRK)2 3
@@ -280,7 +265,7 @@ TEST("breakpoints 201 (step over word)", () => {
 	}
 });
 
-TEST("breakpoints 301 (at end-of-word)", () => {
+TEST("breakpoints 202 (at end-of-word)", () => {
 	{
 		const vm_state = prep_brk_test(`
 			:main
@@ -298,7 +283,10 @@ TEST("breakpoints 301 (at end-of-word)", () => {
 	}
 
 	{
-		// this one tests the ability to set breakpoints in "void",
+		// this one tests the ability to set breakpoints in "void";
+		// breakpoints are used internally for stepping over a
+		// word-call, and the position after the word-call is "void",
+		// which is also interpreted as an implicit return by the VM.
 		const vm_state = prep_brk_test(`
 			:w0rd
 			   3
@@ -319,7 +307,7 @@ TEST("breakpoints 301 (at end-of-word)", () => {
 
 });
 
-TEST("breakpoints 302 (if/else/endif)", () => {
+TEST("breakpoints 203 (if/else/endif)", () => {
 	function test(body, expected_stacks) {
 		const vm_state = prep_brk_test(":main " + body + " ;");
 		while (expected_stacks.length > 0) {
@@ -353,6 +341,136 @@ TEST("breakpoints 302 (if/else/endif)", () => {
 	// falls back to "666")
 	test("0 if 420 else 666 endif   (BRK)   69", [[666], [666,69]]);
 });
+
+TEST("breakpoints 204 (times/loop)", () => {
+	{ // test "times"-breakpoint; it should only be "visited" once
+		const vm_state = prep_brk_test(`
+			:main
+			   5 (BRK)times
+			      69
+			   loop
+			;
+		`);
+
+		vm_state.run();
+		ASSERT_SAME("stack", vm_state.get_stack(), [5]);
+		vm_state.step_over();
+		ASSERT_SAME("stack", vm_state.get_stack(), []);
+		vm_state.run();
+		ASSERT_SAME("stack", vm_state.get_stack(), [69,69,69,69,69]);
+		ASSERT_DONE(vm_state);
+	}
+
+	{
+		const vm_state = prep_brk_test(`
+			:main
+			   5 times
+			      (BRK)69
+			   loop
+			;
+		`);
+
+		let expected_stack = [];
+		for (let i = 0; i < 5; i++) {
+			vm_state.run();
+			ASSERT_SAME("stack", vm_state.get_stack(), expected_stack);
+			vm_state.step_over();
+			expected_stack.push(69);
+			ASSERT_SAME("stack", vm_state.get_stack(), expected_stack);
+		}
+		vm_state.run();
+		ASSERT_SAME("stack", vm_state.get_stack(), expected_stack);
+		ASSERT_DONE(vm_state);
+	}
+
+	{
+		const vm_state = prep_brk_test(`
+			:main
+			   5 times
+			      69
+			   (BRK)loop
+			;
+		`);
+
+		let expected_stack = [];
+		for (let i = 0; i < 5; i++) {
+			vm_state.run();
+			expected_stack.push(69);
+			ASSERT_SAME("stack", vm_state.get_stack(), expected_stack);
+			vm_state.step_over();
+			ASSERT_SAME("stack", vm_state.get_stack(), expected_stack);
+		}
+		vm_state.run();
+		ASSERT_SAME("stack", vm_state.get_stack(), expected_stack);
+		ASSERT_DONE(vm_state);
+	}
+
+	{
+		const vm_state = prep_brk_test(`
+			:main
+			   5 times
+			      69
+			   (BRK)loop
+			;
+		`);
+
+		let expected_stack = [];
+		for (let i = 0; i < 5; i++) {
+			vm_state.run();
+			expected_stack.push(69);
+			ASSERT_SAME("stack", vm_state.get_stack(), expected_stack);
+			vm_state.step_over();
+			ASSERT_SAME("stack", vm_state.get_stack(), expected_stack);
+		}
+		vm_state.run();
+		ASSERT_SAME("stack", vm_state.get_stack(), expected_stack);
+		ASSERT_DONE(vm_state);
+	}
+
+});
+
+TEST("breakpoints 205 (do/while)", () => {
+	{
+		const vm_state = prep_brk_test(`
+			:main
+			   : dup 0 pick ;
+			   1
+			   (BRK)do
+			   2 *
+			   dup 5 lt while
+			;
+		`);
+		vm_state.run();
+		ASSERT_SAME("stack", vm_state.get_stack(), [1]);
+		vm_state.step_over();
+		ASSERT_SAME("stack", vm_state.get_stack(), [1]);
+		vm_state.run();
+		ASSERT_SAME("stack", vm_state.get_stack(), [8]);
+		ASSERT_DONE(vm_state);
+	}
+
+	{
+		const vm_state = prep_brk_test(`
+			:main
+			   : dup 0 pick ;
+			   1
+			   do
+			   2 *
+			   dup 5 lt (BRK)while
+			;
+		`);
+		vm_state.run();
+		ASSERT_SAME("stack", vm_state.get_stack(), [2,true]);
+		vm_state.step_over(); vm_state.run();
+		ASSERT_SAME("stack", vm_state.get_stack(), [4,true]);
+		vm_state.step_over(); vm_state.run();
+		ASSERT_SAME("stack", vm_state.get_stack(), [8,false]);
+		vm_state.step_over(); vm_state.run();
+		ASSERT_SAME("stack", vm_state.get_stack(), [8]);
+		ASSERT_DONE(vm_state);
+	}
+});
+
 
 {
 	const compiler = require("./compiler")(read_file);
