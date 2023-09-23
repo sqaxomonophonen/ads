@@ -56,6 +56,7 @@
 		ifskip = (__depth) => {
 			__depth = 0;
 			for (;;) {
+				if (pc1 >= words[pc0].length) throw new Error("bad prg: ifskip into void"); // XXX(size)
 				advance();
 				// stop at "else" or "endif" when not nested:
 				if (!__depth && (current_opcode == 2 || current_opcode == 3)) break;
