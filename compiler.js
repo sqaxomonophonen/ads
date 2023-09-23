@@ -809,49 +809,53 @@ function new_compiler(read_file_fn) {
 			}
 
 			function resolv_brk_pos(word_op_pos) {
+				let dir = 0;
 				for (;;) {
 					if (word_op_pos[1] < 0) throw new Error("search out of bounds");
 					const op = get_op(word_op_pos);
-					if (op[0] === ELSE || op[0] === ENDIF) {
-						// it's problematic to set breakpoints at else/endif
-						// because they're "weird" and also used as "markers".
-						// so set breakpoint at previous position
+					if (op[0] === ELSE) {
+						if (dir !== 0 && dir !== -1) throw new Error("zig-zag");
+						dir = -1;
 						word_op_pos = [ word_op_pos[0], word_op_pos[1]-1 ];
+					} else if (op[0] === ENDIF) {
+						dir = 1;
+						word_op_pos = [ word_op_pos[0], word_op_pos[1]+1 ];
 					} else {
-						return word_op_pos;
+						return [word_op_pos, dir];
 					}
 				}
 			}
-
 
 			// temporary breakpoints abuse that ops are tuples, so
 			// [sqrt] becomes [brk, sqrt], and [PUSH_IMM, 42]
 			// becomes [brk, PUSH_IMM, 42]. this makes it easy to
 			// disable the breakpoint by .slice(1)'ing it
 
-			function is_temporary_breakpoint_at(word_op_pos) {
-				word_op_pos = resolv_brk_pos(word_op_pos);
+			function is_temporary_breakpoint_at(word_op_pos0) {
+				const [ word_op_pos, dir ] = resolv_brk_pos(word_op_pos0);
 				const op = get_op(word_op_pos);
-				return op.length >= 2 && op[0] === BRK;
+				return op.length >= 3 && op[0] === BRK;
 			}
 
-			function set_breakpoint_at(word_op_pos) {
-				word_op_pos = resolv_brk_pos(word_op_pos);
+			function set_breakpoint_at(word_op_pos0) {
+				const [ word_op_pos, dir ] = resolv_brk_pos(word_op_pos0);
 				if (is_temporary_breakpoint_at(word_op_pos)) {
 					throw new Error("breakpoint already there");
 					return;
 				}
 				const op = get_op(word_op_pos);
+				op.unshift(dir);
 				op.unshift(BRK);
 			}
 
-			function remove_breakpoint_at(word_op_pos) {
-				word_op_pos = resolv_brk_pos(word_op_pos);
+			function remove_breakpoint_at(word_op_pos0) {
+				const [ word_op_pos, dir ] = resolv_brk_pos(word_op_pos0);
 				if (!is_temporary_breakpoint_at(word_op_pos)) {
 					throw new Error("no breakpoint to remove");
 					return;
 				}
 				const op = get_op(word_op_pos);
+				op.shift();
 				op.shift();
 			}
 
@@ -874,6 +878,10 @@ function new_compiler(read_file_fn) {
 				function is_temporary_breakpoint(delta) {
 					return is_temporary_breakpoint_at(pc(delta));
 				}
+				function get_tmp_brk_dir(delta) {
+					if (!is_temporary_breakpoint(delta)) throw new Error("not a tmp brk");
+					return get_op(pc(delta))[1];
+				}
 				function set_breakpoint(delta) {
 					set_breakpoint_at(pc(delta));
 				}
@@ -890,8 +898,17 @@ function new_compiler(read_file_fn) {
 					if (!has_iterations_left()) throw new Error("cannot run(); no iterations left");
 				}
 
+				function is_forward_usr_brk() {
+					return is_temporary_breakpoint() && get_tmp_brk_dir() > 0;
+				}
+
 				function run() {
-					assert_can_run();
+					if (is_forward_usr_brk()) {
+						const brkpos = pc();
+						remove_breakpoint();
+						single_step();
+						set_breakpoint_at(brkpos);
+					}
 					raw = vm(vm_words, raw, (_raw) => {
 						raw = _raw;
 						dump_callback_fn(self);
@@ -933,6 +950,7 @@ function new_compiler(read_file_fn) {
 				function step_over() {
 					assert_can_run();
 					rewind();
+					if (is_forward_usr_brk()) return; // handle in run() instead
 					const is_usr_brk = is_temporary_breakpoint();
 					if (is_usr_brk) remove_breakpoint();
 					const brkpos = pc();

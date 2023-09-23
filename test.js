@@ -371,21 +371,22 @@ TEST("breakpoints 203 (if/else/endif)", () => {
 	test("0 if 420 (BRK)else 666 endif", [[666]]);
 	test("0 if 420 else (BRK)666 endif", [[666], [666]]);
 	test("0 if 420 else 666 (BRK)endif", [[666], [666]]);
-	test("1 if 420 else 666 (BRK)endif", [[420]]);
+	test("1 if 420 else 666 (BRK)endif", [[420], [420]]);
+	test("0 if 420 else 666 (BRK)endif 69", [[666], [666,69]]);
+	test("1 if 420 else 666 (BRK)endif 69", [[420], [420,69]]);
+	test("0 if 420 else 666 endif (BRK) 69", [[666], [666,69]]);
+	test("1 if 420 else 666 endif (BRK) 69", [[420], [420,69]]);
+	test("0 if 420 else 666 endif (BRK) 69 790", [[666], [666,69,790]]);
+	test("1 if 420 else 666 endif (BRK) 69 790", [[420], [420,69,790]]);
+	test("0 if 420 else 666 endif (BRK)69", [[666,69], [666,69]]);
+	test("1 if 420 else 666 endif (BRK)69", [[420,69], [420,69]]);
+	test("0 if 420 else 666 endif (BRK)", [[666], [666]]);
+	test("1 if 420 else 666 endif (BRK)", [[420], [420]]);
 	test("(BRK)1 if 420 else 666 endif", [[1], [420]]);
 	test("(BRK)0 if 420 else 666 endif", [[0], [666]]);
 	test("69 (BRK)1 if 420 else 666 endif", [[69, 1], [69, 420]]);
 	test("69 (BRK)0 if 420 else 666 endif", [[69, 0], [69, 666]]);
 	test("1 (BRK)if 420 else 666 endif", [[], [420]]);
-	test("1 if 420 else 666 endif (BRK)5", [[420,5], [420,5]]);
-	test("1 if 420 else 666 endif (BRK)", [[420]]);
-
-	// XXX these tests fail to set a breakpoint in the "void" between
-	// "endif" and "69"
-	//test("1 if 420 else 666 endif   (BRK)   69", [[420], [420,69]]);
-	// XXX this one gives the correct answer for the wrong reason :-) (BRK
-	// falls back to "666")
-	test("0 if 420 else 666 endif   (BRK)   69", [[666], [666,69]]);
 });
 
 TEST("breakpoints 204 (times/loop)", () => {
