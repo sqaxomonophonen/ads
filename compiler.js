@@ -769,14 +769,6 @@ function new_compiler(read_file_fn) {
 			if (vm_words.length !== dbg_words.length) throw new Error("vm/dbg mismatch");
 			for (let i = 0; i < vm_words.length; i++) if (vm_words[i].length !== dbg_words[i].length) throw new Error("vm/dbg mismatch");
 
-			function get_op(word_op_position) {
-				const [ wi, oi ] = word_op_position;
-				if (!(0 <= wi && wi < vm_words.length)) throw new Error("invalid word index: " + wi);
-				const ops = vm_words[wi];
-				if (!(0 <= oi && oi < ops.length)) throw new Error("invalid op index in " + JSON.stringify([wi,oi]));
-				return vm_words[wi][oi]
-			}
-
 			const opresolv = (() => {
 				let cache = {};
 				return (typ,op) => {
@@ -797,6 +789,19 @@ function new_compiler(read_file_fn) {
 			})();
 
 			const brk = () => opresolv(WORD, "brk");
+			const rtrn = () => opresolv(WORD, "return");
+
+			function get_op(word_op_position) {
+				const [ wi, oi ] = word_op_position;
+				if (!(0 <= wi && wi < vm_words.length)) throw new Error("invalid word index: " + wi);
+				const ops = vm_words[wi];
+				// XXX I'm slightly scared about modifying the
+				// actual program here... but how else do I
+				// support setting a breakpoint at end-of-word
+				// plus one (which is an implicit return)?
+				if (oi === ops.length) ops[oi] = [rtrn()];
+				return ops[oi]
+			}
 
 			// temporary breakpoints abuse that ops are tuples, so
 			// [sqrt] becomes [brk, sqrt], and [PUSH_IMM, 42]

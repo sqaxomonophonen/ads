@@ -13,15 +13,16 @@ const OK    =  txt => ESC+"[1;92m"+txt+NORM;    // bold; fg=bright green
 class TRR extends Error {} // pronounced "TRR!!!"
 
 function TEST(name, fn) {
-	name += " "; while (name.length < 32) name += name.length&1?".":" ";
+	name += " "; while (name.length < 40) name += name.length&1?".":" ";
 	try {
 		let msg = fn();
 		console.log(OK(name + " OK" + (msg ? " ("+msg+")" : "")));
 	} catch (e) {
 		if (e instanceof TRR) {
-			console.log(FAIL(name + " FAILED"));
+			console.log(FAIL(name + " FAILED (TRR)"));
 			throw e;
 		} else {
+			console.log(FAIL(name + " FAILED (" + e + ")"));
 			throw e;
 		}
 	}
@@ -169,7 +170,7 @@ function prep_brk_test(tagged_src) {
 	return vm_state;
 }
 
-TEST("breakpoints 101 (flat)", () => {
+TEST("breakpoints 101 (simple stuff)", () => {
 	const vm_state = prep_brk_test(`
 		:main
 		   111 222
@@ -199,7 +200,7 @@ TEST("breakpoints 101 (flat)", () => {
 	ASSERT_SAME("stack", vm_state.get_stack(), [111,222,333,444,555,666,777,888]);
 });
 
-TEST("breakpoints 102 (loops)", () => {
+TEST("breakpoints 102 (inside loop)", () => {
 	const vm_state = prep_brk_test(`
 		:main
 		   5 times
@@ -218,7 +219,7 @@ TEST("breakpoints 102 (loops)", () => {
 	}
 });
 
-TEST("breakpoints 103 (on same line)", () => {
+TEST("breakpoints 103 (multiple on same line)", () => {
 	const vm_state = prep_brk_test(`
 		:main
 		(BRK)0 (BRK)1 (BRK)2 (BRK)3
@@ -235,7 +236,7 @@ TEST("breakpoints 103 (on same line)", () => {
 	}
 });
 
-TEST("breakpoints 201 (step over)", () => {
+TEST("breakpoints 201 (step over word)", () => {
 	const vm_state = prep_brk_test(`
 		:main
 		   :w0rd
@@ -259,6 +260,45 @@ TEST("breakpoints 201 (step over)", () => {
 		expected_stack.push(2);
 		expected_stack.push(22);
 	}
+});
+
+TEST("breakpoints 301 (at end-of-word)", () => {
+	{
+		const vm_state = prep_brk_test(`
+			:main
+			   1 2 (BRK)3
+			;
+		`);
+		let expected_stack = [];
+		vm_state.run();
+		expected_stack.push(1);
+		expected_stack.push(2);
+		ASSERT_SAME("stack", vm_state.get_stack(), expected_stack);
+		vm_state.step_over();
+		expected_stack.push(3);
+		ASSERT_SAME("stack", vm_state.get_stack(), expected_stack);
+	}
+
+	{
+		// this one tests the ability to set breakpoints in "void",
+		const vm_state = prep_brk_test(`
+			:w0rd
+			   3
+			;
+			:main
+			   1 2 (BRK)w0rd
+			;
+		`);
+		let expected_stack = [];
+		vm_state.run();
+		expected_stack.push(1);
+		expected_stack.push(2);
+		ASSERT_SAME("stack", vm_state.get_stack(), expected_stack);
+		vm_state.step_over();
+		expected_stack.push(3);
+		ASSERT_SAME("stack", vm_state.get_stack(), expected_stack);
+	}
+
 });
 
 {
