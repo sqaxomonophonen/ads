@@ -133,27 +133,54 @@ TEST("trace by word path", () => {
 	}
 });
 
-TEST("breakpoints 101 (flat)", () => {
-	const FILENAME = "<test.4st>";
-	const cc = create_compiler(mk_filesys({[FILENAME]:
-`:w0rd
-   111 222
-   333 ( and break here )
-   444 555
-   666 ( and also here )
-   777 888
-;
-	`}));
-	const cu = cc.compile(FILENAME);
-	const prg = cu.trace_program_debug((word_path) => word_path === "w0rd");
-	if (prg.export_word_indices.length !== 1) throw new TRR("expected 1 exported word index, got: " + JSON.stringify(prg.export_word_indices));
+function resolve_breakpoints(src) {
+	const BRK = "(BRK)";
+	const lines = src.split("\n");
+	const n_lines = lines.length;
+	let breakpoints = [];
+	const new_lines = []; // hehe
+	for (let line_number = 0; line_number < n_lines; line_number++) {
+		let line = lines[line_number];
+		for (;;) {
+			let column = line.indexOf(BRK);
+			if (column === -1) break;
+			breakpoints.push([line_number, column]);
+			line = line.slice(0, column) + line.slice(column + BRK.length);
+		}
+		new_lines.push(line);
+	}
+	return { src: new_lines.join("\n"), breakpoints };
+}
 
+
+function prep_brk_test(tagged_src) {
+	const { src, breakpoints } = resolve_breakpoints(tagged_src);
+	const FILENAME = "<test.4st>";
+	const cc = create_compiler(mk_filesys({[FILENAME]: src}));
+	const cu = cc.compile(FILENAME);
+	const prg = cu.trace_program_debug((word_path) => word_path === "main");
+	if (prg.export_word_indices.length !== 1) throw new TRR("expected 1 exported word index, got: " + JSON.stringify(prg.export_word_indices));
 	const vm_state = prg.new_state();
 	vm_state.set_pc_to_export_word_index(0);
-	vm_state.set_iteration_counter(1e3);
+	vm_state.set_iteration_counter(1e4);
+	for (const bp of breakpoints) {
+		prg.set_breakpoint_at(cc.find_2lvl_position_at_or_after(prg.dbg_words, FILENAME, bp[0], bp[1]));
+	}
+	return vm_state;
+}
 
-	// set breakpoint at "333"
-	prg.set_breakpoint_at(cc.find_2lvl_position_at_or_after(prg.dbg_words, FILENAME, 2, 3));
+TEST("breakpoints 101 (flat)", () => {
+	const vm_state = prep_brk_test(`
+		:main
+		   111 222
+		   (BRK)333
+		   444 555
+		   (BRK)666
+		   777 888
+		;
+	`);
+
+	// breakpoint at "333"
 	vm_state.run();
 	// "333" has not yet been executed:
 	ASSERT_SAME("stack", vm_state.get_stack(), [111,222]);
@@ -161,8 +188,7 @@ TEST("breakpoints 101 (flat)", () => {
 	vm_state.continue_after_user_breakpoint();
 	ASSERT_SAME("stack", vm_state.get_stack(), [111,222,333]);
 
-	// set breakpoint at "666", samey samey...
-	prg.set_breakpoint_at(cc.find_2lvl_position_at_or_after(prg.dbg_words, FILENAME, 4, 3));
+	// breakpoint at "666", samey samey...
 	vm_state.run();
 	ASSERT_SAME("stack", vm_state.get_stack(), [111,222,333,444,555]);
 	vm_state.continue_after_user_breakpoint();
@@ -174,23 +200,13 @@ TEST("breakpoints 101 (flat)", () => {
 });
 
 TEST("breakpoints 102 (loops)", () => {
-	const FILENAME = "<test.4st>";
-	const cc = create_compiler(mk_filesys({[FILENAME]:
-`:w0rd
-   5 times
-      69
-   loop
-;
-	`}));
-	const cu = cc.compile(FILENAME);
-	const prg = cu.trace_program_debug((word_path) => word_path === "w0rd");
-	if (prg.export_word_indices.length !== 1) throw new TRR("expected 1 exported word index, got: " + JSON.stringify(prg.export_word_indices));
-
-	const vm_state = prg.new_state();
-	vm_state.set_pc_to_export_word_index(0);
-	vm_state.set_iteration_counter(1e3);
-
-	prg.set_breakpoint_at(cc.find_2lvl_position_at_or_after(prg.dbg_words, FILENAME, 2, 6));
+	const vm_state = prep_brk_test(`
+		:main
+		   5 times
+		      (BRK)69
+		   loop
+		;
+	`);
 
 	let expected_stack = [];
 	for (let i = 0; i < 5; i++) {
@@ -202,67 +218,46 @@ TEST("breakpoints 102 (loops)", () => {
 	}
 });
 
-TEST("breakpoints 103 (precision)", () => {
-	const FILENAME = "<test.4st>";
-	const cc = create_compiler(mk_filesys({[FILENAME]:
-`:w0rd
-0 1 2 3
-;
-	`}));
-	const cu = cc.compile(FILENAME);
-	const prg = cu.trace_program_debug((word_path) => word_path === "w0rd");
-	if (prg.export_word_indices.length !== 1) throw new TRR("expected 1 exported word index, got: " + JSON.stringify(prg.export_word_indices));
+TEST("breakpoints 103 (on same line)", () => {
+	const vm_state = prep_brk_test(`
+		:main
+		(BRK)0 (BRK)1 (BRK)2 (BRK)3
+		;
+	`);
 
-	let brkpos;
-	for (let column = 0; column <= 6; column++) {
-		if (brkpos) prg.remove_breakpoint_at(brkpos);
-		brkpos = cc.find_2lvl_position_at_or_after(prg.dbg_words, FILENAME, 1, column);
-		prg.set_breakpoint_at(brkpos);
-		const vm_state = prg.new_state();
-		vm_state.set_pc_to_export_word_index(0);
-		vm_state.set_iteration_counter(1e3);
-		let expected_stack = [];
-		vm_state.run();
-		let i;
-		for (i = 0; i < (column/2|0); i++) expected_stack.push(i);
+	let expected_stack = [];
+	for (let i = 0; i < 4; i++) {
 		ASSERT_SAME("stack", vm_state.get_stack(), expected_stack);
+		vm_state.run();
 		vm_state.continue_after_user_breakpoint();
 		expected_stack.push(i);
 		ASSERT_SAME("stack", vm_state.get_stack(), expected_stack);
 	}
 });
 
-NOTEST("breakpoints 201 (step over)", () => {
-	const FILENAME = "<test.4st>";
-	const cc = create_compiler(mk_filesys({[FILENAME]:
-`:w0rd
-   :w3rd
-      420 666 drop drop 69
-   ;
-   5 times
-      1 w3rd 2
-   loop
-;
-	`}));
-	const cu = cc.compile(FILENAME);
-	const prg = cu.trace_program_debug((word_path) => word_path === "w0rd");
-	if (prg.export_word_indices.length !== 1) throw new TRR("expected 1 exported word index, got: " + JSON.stringify(prg.export_word_indices));
-
-	const vm_state = prg.new_state();
-	vm_state.set_pc_to_export_word_index(0);
-	vm_state.set_iteration_counter(1e3);
-
-	prg.set_breakpoint_at(cc.find_2lvl_position_at_or_after(prg.dbg_words, FILENAME, 5, 8));
+TEST("breakpoints 201 (step over)", () => {
+	const vm_state = prep_brk_test(`
+		:main
+		   :w0rd
+		      420 666 drop drop 69
+		   ;
+		   5 times
+		      11 1 (BRK)w0rd 2 22
+		   loop
+		;
+	`);
 
 	let expected_stack = [];
 	for (let i = 0; i < 5; i++) {
 		vm_state.run();
+		expected_stack.push(11);
 		expected_stack.push(1);
 		ASSERT_SAME("stack", vm_state.get_stack(), expected_stack);
 		vm_state.continue_after_user_breakpoint();
 		expected_stack.push(69);
 		ASSERT_SAME("stack", vm_state.get_stack(), expected_stack);
 		expected_stack.push(2);
+		expected_stack.push(22);
 	}
 });
 

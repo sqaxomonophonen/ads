@@ -809,13 +809,19 @@ function new_compiler(read_file_fn) {
 			}
 
 			function set_breakpoint_at(word_op_position) {
-				if (is_temporary_breakpoint_at(word_op_position)) return;
+				if (is_temporary_breakpoint_at(word_op_position)) {
+					throw new Error("breakpoint already there");
+					return;
+				}
 				const op = get_op(word_op_position);
 				op.unshift(brk());
 			}
 
 			function remove_breakpoint_at(word_op_position) {
-				if (!is_temporary_breakpoint_at(word_op_position)) return;
+				if (!is_temporary_breakpoint_at(word_op_position)) {
+					throw new Error("no breakpoint to remove");
+					return;
+				}
 				const op = get_op(word_op_position);
 				op.shift();
 			}
@@ -832,8 +838,8 @@ function new_compiler(read_file_fn) {
 				const get_iteration_counter =  () => raw[ITERATION_COUNT];
 				const set_iteration_counter = (n) => raw[ITERATION_COUNT] = Math.ceil(n);
 				let dump_callback_fn;
-				function rewind(n) {
-					raw[PC1] -= n;
+				function rewind() {
+					raw[PC1]--;
 				}
 
 				function set_breakpoint(delta) {
@@ -862,12 +868,13 @@ function new_compiler(read_file_fn) {
 				}
 
 				function goto_pc_plus_one_at_breakpoint() {
-					const bp1 = pc();
-					bp1[1]++;
+					const bp1 = pc(); // NOTE pc() returns copy, not reference
+					bp1[1] += 1;
 					set_breakpoint_at(bp1);
 					for (;;) {
 						run();
 						if (pceq(pc(-1), bp1)) {
+							rewind();
 							break;
 						}
 					}
@@ -880,7 +887,7 @@ function new_compiler(read_file_fn) {
 				}
 
 				function continue_after_user_breakpoint() {
-					rewind(1);
+					rewind();
 					remove_breakpoint();
 					const brkpos = pc();
 					// there are two methods for executing
