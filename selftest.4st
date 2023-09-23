@@ -117,6 +117,8 @@
    \api_two 1 + call    42 = assert
    \api_one 2 + call    42 = assert
    \api_four 1 - call   42 = assert
+
+   ( \not_this_one ) (<<triggers compiler error)
 ;
 
 : test_inline_words

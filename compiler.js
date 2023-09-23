@@ -507,10 +507,6 @@ function new_compiler(read_file_fn) {
 				const word = word_stack[word_stack.length-1];
 
 				if (!inline_ops) {
-					// XXX don't really know if refcount is
-					// useful...
-					//if (word.refcount === undefined) word.refcount = 0;
-					//word.refcount++;
 					if (lift_set.has(word)) return;
 					lift_set.add(word);
 				}
@@ -559,6 +555,8 @@ function new_compiler(read_file_fn) {
 										if (w2.is_inline_word) throw new Error("XXX");
 										uplift_word([...word_stack.slice(0, i0+1), w2]);
 									}
+								} else if (ii === number_ii) {
+									throw new Error("address (\\) can only be used on table words");
 								} else if (ii === call_ii) {
 									let pass_inline_ops = inline_ops;
 									if (w1.is_inline_word) {
