@@ -325,24 +325,24 @@ TEST("breakpoints 302 (if/else/endif)", () => {
 		while (expected_stacks.length > 0) {
 			vm_state.run();
 			if (expected_stacks.length >= 2) vm_state.step_over();
-			ASSERT_SAME("stack", vm_state.get_stack(), expected_stacks.pop());
+			ASSERT_SAME("stack", vm_state.get_stack(), expected_stacks.shift());
 		}
 	}
 
 	test("1 if 420 else 666 endif",      [[420]]);
 	test("1 if (BRK)420 else 666 endif", [[420], [420]]);
 	test("1 if 420 (BRK)else 666 endif", [[420], [420]]);
+	//test("0 if 420 (BRK)else 666 endif", [[420], [420]]); // XXX invalid word index -1
 	test("0 if 420 else (BRK)666 endif", [[666], [666]]);
 	test("0 if 420 else 666 (BRK)endif", [[666], [666]]);
-
-	// XXX these are broken...
-	//test("(BRK)1 if 420 else 666 endif", [[1], [420]]);
-	//test("(BRK)0 if 420 else 666 endif", [[0], [666]]);
-	//test("69 (BRK)1 if 420 else 666 endif", [[69, 1], [69, 420]]);
-	//test("69 (BRK)0 if 420 else 666 endif", [[69, 0], [69, 666]]);
-	//test("1 (BRK)if 420 else 666 endif", [[], [420]]);
-	// XXX this one goes into an infinite loop! tasty!
-	//test("1 if 420 else 666 endif (BRK)", [[420], [420]]);
+	//test("1 if 420 else 666 (BRK)endif", [[420], [420]]); // XXX infinite loop
+	test("(BRK)1 if 420 else 666 endif", [[1], [420]]);
+	test("(BRK)0 if 420 else 666 endif", [[0], [666]]);
+	test("69 (BRK)1 if 420 else 666 endif", [[69, 1], [69, 420]]);
+	test("69 (BRK)0 if 420 else 666 endif", [[69, 0], [69, 666]]);
+	test("1 (BRK)if 420 else 666 endif", [[], [420]]);
+	test("1 if 420 else 666 endif (BRK)5", [[420,5], [420,5]]);
+	//test("1 if 420 else 666 endif (BRK)", [[420], [420]]); // XXX this one goes into an infinite loop! tasty!
 });
 
 {
