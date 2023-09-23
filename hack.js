@@ -68,9 +68,20 @@ function bracket_event(ev) {
 }
 
 function present(o) {
-	$("#entrypoint").innerText = ":" + o.entrypoint_word_path + " (" + o.entrypoint_filename + ")";
-	$("#passes").innerText = o.actual_passes + "/" + o.n_passes + "p";
-	$("#iterations").innerText = Math.ceil(o.n_iterations) + "/" + Math.ceil(o.max_iterations) + "o";
+	if (!o) {
+		$("#entrypoint").innerText = "-";
+		$("#passes").innerText = "-";
+		$("#iterations").innerText = "-";
+		o = {
+			stack: [],
+			rstack: [],
+			error: null,
+		};
+	} else {
+		$("#entrypoint").innerText = ":" + o.entrypoint_word_path + " (" + o.entrypoint_filename + ")";
+		$("#passes").innerText = o.actual_passes + "/" + o.n_passes + "p";
+		$("#iterations").innerText = Math.ceil(o.n_iterations) + "/" + Math.ceil(o.max_iterations) + "o";
+	}
 
 	const { stack, rstack, error } = o;
 
@@ -178,7 +189,7 @@ window.addEventListener("load", () => {
 			console.error(e);
 			$("#entrypoint").innerText = "---";
 			$("#passes").innerText = "---";
-			set_error("OFFLINE");
+			set_error("OFFLINE: " + e);
 			seen_serial = 0;
 			setTimeout(loop, 1000);
 		});
