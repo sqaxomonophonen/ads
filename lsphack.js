@@ -331,7 +331,7 @@ const vm = (() => {
 						if (eq(vm_state.pc(-1), brkpos)) {
 							passes_left--;
 							last_attempt_iteration_count = get_iteration_count() - 1;
-							vm_state.continue_after_user_breakpoint();
+							vm_state.step_over();
 						} else {
 							// in-code breakpoint?
 							LOG("BRK at " + JSON.stringify(vm_state.pc(-1)) +  " at " + vm_state.get_position_human());
