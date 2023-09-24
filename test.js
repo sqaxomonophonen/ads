@@ -389,6 +389,26 @@ TEST("breakpoints 203 (if/else/endif)", () => {
 	test("1 (BRK)if 420 else 666 endif", [[], [420]]);
 });
 
+TEST("breakpoints 203a (zig-zag)", () => {
+	const vm_state = prep_brk_test(`
+	:nested
+	if
+	   if 1 else 2 endif
+	(BRK)else
+	   if 3 else 4 endif
+	endif
+	;
+	:main
+	   0 0 nested
+	;
+	`);
+	vm_state.run();
+	vm_state.step_over();
+	vm_state.run();
+	ASSERT_SAME("stack", vm_state.get_stack(), [4]);
+	ASSERT_DONE(vm_state);
+});
+
 TEST("breakpoints 204 (times/loop)", () => {
 	{ // test "times"-breakpoint; it should only be "visited" once
 		const vm_state = prep_brk_test(`

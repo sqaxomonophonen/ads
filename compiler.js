@@ -813,11 +813,11 @@ function new_compiler(read_file_fn) {
 				for (;;) {
 					if (word_op_pos[1] < 0) throw new Error("search out of bounds");
 					const op = get_op(word_op_pos);
-					if (op[0] === ELSE) {
-						if (dir !== 0 && dir !== -1) throw new Error("zig-zag");
+					const op0 = op[0];
+					if (op0 === ELSE && (dir === 0 || dir === -1)) {
 						dir = -1;
 						word_op_pos = [ word_op_pos[0], word_op_pos[1]-1 ];
-					} else if (op[0] === ENDIF) {
+					} else if (op0 === ENDIF || (op0 === ELSE && dir === 1)) {
 						dir = 1;
 						word_op_pos = [ word_op_pos[0], word_op_pos[1]+1 ];
 					} else {
