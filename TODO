@@ -1,6 +1,29 @@
  - library support and type tags for graphs / curves / symbol-sequences +
    dedicated renderers in hack.js
 
- - goto word implementation (on <C-q>)
+ - in :test_brk, moving the cursor into :brk_deep can trigger infinite
+   recursion ("Maximum call stack size exceeded")
+
+ - in :test_recursion, moving the cursor around in :gcd can trigger a "cannot
+   run(); program has ended" error
+
+ - something's funky with +/- passes; assertions sometimes start failing in
+   tests; and in ":test_branches" it can trigger a "cannot run(); no iterations
+   left"; also the breakpoint sometimes seems off-by-one (look at what's on the
+   stack) at 2+ passes
+
+ - the ability to set a desired number of cursor passes kinda works, but it is
+   weird with e,g. loops. I think it would be better to have a "slightly more
+   stateful" approach that considers how many cycles you spent getting where
+   the cursor is now, and then uses it to choose the "closest pass" in terms of
+   cycles/direction; if cursor movement is forward, then it looks for the
+   closest pass with a higher cycle count, and with backward cursor movement it
+   looks for a lower count. this also means that if a loop is approached from
+   the top, you enter the first iteration, but if approached from the bottom
+   you get the last iteration. it could probably be used for step-out too; find
+   return location on rstack and set a breakpoint; find the closest breakpoint
+   pass with a higher cycle count.
 
  - step forward/backward, step in/out, goto next/prev brk
+
+ - goto word implementation (on <C-q>)
