@@ -286,7 +286,6 @@ const vm = (() => {
 			return;
 		}
 
-		let brkpos = null;
 		if (cursor_position != null) {
 			const curpos = [
 				path.basename(filesys.uri_to_full_path(cursor_position.uri)),
@@ -294,11 +293,7 @@ const vm = (() => {
 				cursor_position.column,
 			];
 
-			brkpos = cc.find_2lvl_position_at_or_after(prg.dbg_words, curpos[0], curpos[1], curpos[2]);
-
-			if (brkpos) {
-				prg.set_breakpoint_at(brkpos);
-			}
+			prg.set_breakpoint_at_cursor(curpos[0], curpos[1], curpos[2]);
 		}
 
 		let last_attempt_iteration_count, vm_state, iteration_budget_exceeded,
@@ -327,15 +322,13 @@ const vm = (() => {
 					break;
 				}
 				if (!vm_state.did_exit()) {
-					if (vm_state.broke_at_breakpoint()) {
-						if (eq(vm_state.pc(-1), brkpos)) {
-							passes_left--;
-							last_attempt_iteration_count = get_iteration_count() - 1;
-							vm_state.step_over();
-						} else {
-							// in-code breakpoint?
-							LOG("BRK at " + JSON.stringify(vm_state.pc(-1)) +  " at " + vm_state.get_position_human());
-						}
+					if (vm_state.broke_at_user_breakpoint()) {
+						passes_left--;
+						last_attempt_iteration_count = get_iteration_count() - 1;
+						vm_state.step_over();
+					} else if (vm_state.broke_at_breakpoint()) {
+						// in-code breakpoint
+						LOG("BRK at " + JSON.stringify(vm_state.pc(-1)) +  " at " + vm_state.get_position_human());
 					} else if (vm_state.broke_at_assertion()) {
 						assertion_failed = true;
 						break;

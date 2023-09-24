@@ -169,7 +169,7 @@ function prep_brk_test(tagged_src) {
 	vm_state.set_pc_to_export_word_index(0);
 	vm_state.set_iteration_counter(1e4);
 	for (const bp of breakpoints) {
-		prg.set_breakpoint_at(cc.find_2lvl_position_at_or_after(prg.dbg_words, FILENAME, bp[0], bp[1]));
+		prg.set_breakpoint_at_cursor(FILENAME, bp[0], bp[1]);
 	}
 	return vm_state;
 }

@@ -848,6 +848,11 @@ function new_compiler(read_file_fn) {
 				op.unshift(BRK);
 			}
 
+			function set_breakpoint_at_cursor(filename, line, col) {
+				const brkpos = find_2lvl_position_at_or_after(dbg_words, filename, line, col);
+				if (brkpos) set_breakpoint_at(brkpos);
+			}
+
 			function remove_breakpoint_at(word_op_pos0) {
 				const [ word_op_pos, dir ] = resolv_brk_pos(word_op_pos0);
 				if (!is_temporary_breakpoint_at(word_op_pos)) {
@@ -1003,6 +1008,7 @@ function new_compiler(read_file_fn) {
 					get_exception:  () => raw[EXC],
 					broke_at_assertion:   () => get_pc_op(-1)[0] === opresolv(WORD, "assert"),
 					broke_at_breakpoint:  () => get_pc_op(-1)[0] === BRK,
+					broke_at_user_breakpoint:  () => is_temporary_breakpoint_at(pc(-1)),
 					get_position,
 					pc,
 					get_position_human: () => {
@@ -1041,8 +1047,9 @@ function new_compiler(read_file_fn) {
 				export_word_indices,
 				export_word_names,
 				vm_src,
-				set_breakpoint_at,
-				remove_breakpoint_at,
+				set_breakpoint_at_cursor,
+				//set_breakpoint_at,
+				//remove_breakpoint_at,
 			};
 		}
 
@@ -1065,7 +1072,6 @@ function new_compiler(read_file_fn) {
 		is_test_word,
 		is_main_word,
 		find_word_path,
-		find_2lvl_position_at_or_after,
 	};
 }
 
