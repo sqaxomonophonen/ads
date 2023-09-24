@@ -826,10 +826,12 @@ function new_compiler(read_file_fn) {
 				}
 			}
 
-			// temporary breakpoints abuse that ops are tuples, so
-			// [sqrt] becomes [brk, sqrt], and [PUSH_IMM, 42]
-			// becomes [brk, PUSH_IMM, 42]. this makes it easy to
-			// disable the breakpoint by .slice(1)'ing it
+			// temporary breakpoints:
+			// [sqrt] becomes [brk, <dir>, sqrt], [PUSH_IMM, 42]
+			// becomes [brk, <dir> PUSH_IMM, 42], and so on. this
+			// allows disabling breakpoints by removing [brk, <dir]
+			// again. <dir> is a speciel "direction" value, that is
+			// used to allow setting breakpoints in "void"
 
 			function is_temporary_breakpoint_at(word_op_pos0) {
 				const [ word_op_pos, dir ] = resolv_brk_pos(word_op_pos0);

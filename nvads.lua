@@ -39,6 +39,10 @@ function ADS_initialize()
 				direction=direction,
 			},
 		})
+		-- LSP has 4 "gotos"; goto declaration / definition / type
+		-- definition / implementation ... but I need a couple more, so
+		-- "type definition" is the "umbrella goto" when preceeded by a
+		-- "prepare_goto_hack" command
 		vim.lsp.buf.type_definition()
 	end
 
