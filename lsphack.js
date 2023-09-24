@@ -316,20 +316,19 @@ const vm = (() => {
 				if (vm_state.did_exit()) {
 					break;
 				}
-				vm_state.run();
+				const rr = vm_state.run();
 				if (vm_state.did_throw()) {
 					runtime_error = vm_state.get_exception();
 					break;
 				}
 				if (!vm_state.did_exit()) {
-					if (vm_state.broke_at_tmpbrk()) {
+					if (rr[0] === "tmpbrk") {
 						passes_left--;
 						last_attempt_iteration_count = get_iteration_count() - 1;
-						vm_state.step_over();
-					} else if (vm_state.broke_at_brk()) {
+					} else if (rr[0] === "brk") {
 						// in-code breakpoint
 						LOG("BRK at " + JSON.stringify(vm_state.pc(-1)) +  " at " + vm_state.get_position_human());
-					} else if (vm_state.broke_at_assertion()) {
+					} else if (rr[0] === "assert") {
 						assertion_failed = true;
 						break;
 					} else if (vm_state.get_iteration_counter() === 0) {
