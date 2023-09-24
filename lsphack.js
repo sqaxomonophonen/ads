@@ -293,7 +293,7 @@ const vm = (() => {
 				cursor_position.column,
 			];
 
-			prg.set_breakpoint_at_cursor(curpos[0], curpos[1], curpos[2]);
+			prg.set_tmpbrk_at_cursor(curpos[0], curpos[1], curpos[2]);
 		}
 
 		let last_attempt_iteration_count, vm_state, iteration_budget_exceeded,
@@ -322,11 +322,11 @@ const vm = (() => {
 					break;
 				}
 				if (!vm_state.did_exit()) {
-					if (vm_state.broke_at_user_breakpoint()) {
+					if (vm_state.broke_at_tmpbrk()) {
 						passes_left--;
 						last_attempt_iteration_count = get_iteration_count() - 1;
 						vm_state.step_over();
-					} else if (vm_state.broke_at_breakpoint()) {
+					} else if (vm_state.broke_at_brk()) {
 						// in-code breakpoint
 						LOG("BRK at " + JSON.stringify(vm_state.pc(-1)) +  " at " + vm_state.get_position_human());
 					} else if (vm_state.broke_at_assertion()) {

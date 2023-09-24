@@ -342,28 +342,49 @@ function new_compiler(read_file_fn) {
 	const is_test_word = word => word.startsWith("test_");
 	const is_main_word = word => word.startsWith("main_");
 
-	function find_2lvl_position_at_or_after(positions2lvl, filename, line, column) {
-		const n0 = positions2lvl.length;
-		let best_position = null;
+	function src_lookup(pos2lvl, filename, line, column) {
+		// XXX this lookup looks at the compiled code, which is a bit
+		// more sparse in information that the source itself. I think
+		// this function could be improved by locating the word the
+		// cursor is in, and then look for the best position in that
+		// word alone
+		const n0 = pos2lvl.length;
+		let best_return_value = null;
 		let best_distance = null;
+		let best_op0_return_value = null;
+		let best_op0_distance = null;
+		function is_better_distance(best,challenge) {
+			return (best === null) || (challenge[0] < best[0] || (challenge[0] === best[0] && challenge[1] < best[1]));
+		}
 		for (let i0 = 0; i0 < n0; i0++) {
-			const positions = positions2lvl[i0];
+			const positions = pos2lvl[i0];
 			const n1 = positions.length;
+			if (n1.length === 0) continue;
+
+			const op0_distance = [ positions[0][1]-line, positions[0][2]-column ];
+			if (op0_distance[0] > 0 || (op0_distance[0] === 0 && op0_distance[1] > 0)) {
+				if (is_better_distance(best_op0_distance, op0_distance)) {
+					best_op0_return_value = [[i0, 0], false];
+					best_op0_distance = op0_distance;
+				}
+			}
+
 			for (let i1 = 0; i1 < n1; i1++) {
 				const pos = positions[i1];
 				if (pos[0] !== filename) continue;
 				if (line > pos[1] || (line === pos[1] && column >= pos[2])) {
 					const distance = [line-pos[1], column-pos[2]];
 					if (distance[0] < 0) throw new Error("ASSERTION ERROR");
-					if (best_position === null || (distance[0] < best_distance[0] || (distance[0] === best_distance[0] && distance[1] < best_distance[1]))) {
-						best_position = [i0,i1];
+					if (is_better_distance(best_distance, distance)) {
+						const in_token = (line === pos[1]) && (pos[2] <= column && column < pos[3]);
+						best_return_value = [[i0,i1 + (in_token?0:1)],in_token];
 						best_distance = distance;
 
 					}
 				}
 			}
 		}
-		return best_position;
+		return best_return_value !== null ? best_return_value : best_op0_return_value;
 	}
 
 	function span_contains(line0, col0, line1, col1, line, col) {
@@ -787,13 +808,13 @@ function new_compiler(read_file_fn) {
 			})();
 
 			const [
-				BRK,
-				RETURN,
-				ELSE, ENDIF,
+				OP_BRK,
+				OP_ASSERT,
+				OP_RETURN,
 			] = [
 				"brk",
+				"assert",
 				"return",
-				"else", "endif",
 			].map(name => opresolv(WORD, name));
 
 			function get_op(word_op_pos) {
@@ -804,62 +825,49 @@ function new_compiler(read_file_fn) {
 				// actual program here... but how else do I
 				// support setting a breakpoint at end-of-word
 				// plus one (which is an implicit return)?
-				if (oi === ops.length) ops[oi] = [RETURN];
+				if (oi === ops.length) ops[oi] = [OP_RETURN];
 				return ops[oi]
 			}
 
-			function resolv_brk_pos(word_op_pos) {
-				let dir = 0;
-				for (;;) {
-					if (word_op_pos[1] < 0) throw new Error("search out of bounds");
-					const op = get_op(word_op_pos);
-					const op0 = op[0];
-					if (op0 === ELSE && (dir === 0 || dir === -1)) {
-						dir = -1;
-						word_op_pos = [ word_op_pos[0], word_op_pos[1]-1 ];
-					} else if (op0 === ENDIF || (op0 === ELSE && dir === 1)) {
-						dir = 1;
-						word_op_pos = [ word_op_pos[0], word_op_pos[1]+1 ];
-					} else {
-						return [word_op_pos, dir];
-					}
+			function is_op_at(word_op_pos, op) {
+				return get_op(word_op_pos)[0] === op;
+			}
+
+			// tmpbrk:
+			// [sqrt] becomes [brk, <defer>, sqrt], [PUSH_IMM, 42]
+			// becomes [brk, <defer>, PUSH_IMM, 42], and so on.
+			// this allows disabling breakpoints by removing [brk,
+			// <defer>] again. when <defer>=true it means that
+			// run() should stop _before_ the brk. otherwise it
+			// stops after executing the masked op, e.g. the
+			// [PUSH_IMM, 42] of [brk, <defer>, PUSH_IMM, 42]
+
+			function is_tmpbrk_at(word_op_pos) {
+				const op = get_op(word_op_pos);
+				return op.length >= 3 && op[0] === OP_BRK; // a normal brk is [BRK] / length=1
+			}
+
+			function set_tmpbrk_at(word_op_pos, is_deferred) {
+				if (is_tmpbrk_at(word_op_pos)) {
+					throw new Error("tmpbrk already there");
+				}
+				const op = get_op(word_op_pos);
+				op.unshift(is_deferred);
+				op.unshift(OP_BRK);
+			}
+
+			function set_tmpbrk_at_cursor(filename, line, col) {
+				const r = src_lookup(dbg_words, filename, line, col);
+				if (r === null) throw new Error("null lookup");
+				const [ brkpos, in_token ] = r;
+				if (brkpos) {
+					set_tmpbrk_at(brkpos, !in_token);
 				}
 			}
 
-			// temporary breakpoints:
-			// [sqrt] becomes [brk, <dir>, sqrt], [PUSH_IMM, 42]
-			// becomes [brk, <dir> PUSH_IMM, 42], and so on. this
-			// allows disabling breakpoints by removing [brk, <dir]
-			// again. <dir> is a speciel "direction" value, that is
-			// used to allow setting breakpoints in "void"
-
-			function is_temporary_breakpoint_at(word_op_pos0) {
-				const [ word_op_pos, dir ] = resolv_brk_pos(word_op_pos0);
-				const op = get_op(word_op_pos);
-				return op.length >= 3 && op[0] === BRK;
-			}
-
-			function set_breakpoint_at(word_op_pos0) {
-				const [ word_op_pos, dir ] = resolv_brk_pos(word_op_pos0);
-				if (is_temporary_breakpoint_at(word_op_pos)) {
-					throw new Error("breakpoint already there");
-					return;
-				}
-				const op = get_op(word_op_pos);
-				op.unshift(dir);
-				op.unshift(BRK);
-			}
-
-			function set_breakpoint_at_cursor(filename, line, col) {
-				const brkpos = find_2lvl_position_at_or_after(dbg_words, filename, line, col);
-				if (brkpos) set_breakpoint_at(brkpos);
-			}
-
-			function remove_breakpoint_at(word_op_pos0) {
-				const [ word_op_pos, dir ] = resolv_brk_pos(word_op_pos0);
-				if (!is_temporary_breakpoint_at(word_op_pos)) {
-					throw new Error("no breakpoint to remove");
-					return;
+			function remove_tmpbrk_at(word_op_pos) {
+				if (!is_tmpbrk_at(word_op_pos)) {
+					throw new Error("no tmpbrk to remove");
 				}
 				const op = get_op(word_op_pos);
 				op.shift();
@@ -882,18 +890,17 @@ function new_compiler(read_file_fn) {
 					raw[PC1]--;
 				}
 
-				function is_temporary_breakpoint(delta) {
-					return is_temporary_breakpoint_at(pc(delta));
+				function is_op(delta, op) {
+					return is_op_at(pc(delta), op);
 				}
-				function get_tmp_brk_dir(delta) {
-					if (!is_temporary_breakpoint(delta)) throw new Error("not a tmp brk");
-					return get_op(pc(delta))[1];
+				function is_tmpbrk(delta) {
+					return is_tmpbrk_at(pc(delta));
 				}
-				function set_breakpoint(delta) {
-					set_breakpoint_at(pc(delta));
+				function set_tmpbrk(delta) {
+					set_tmpbrk_at(pc(delta));
 				}
-				function remove_breakpoint(delta) {
-					remove_breakpoint_at(pc(delta));
+				function remove_tmpbrk(delta) {
+					remove_tmpbrk_at(pc(delta));
 				}
 
 				const has_ended = () => raw[PC0] < 0;
@@ -905,27 +912,69 @@ function new_compiler(read_file_fn) {
 					if (!has_iterations_left()) throw new Error("cannot run(); no iterations left");
 				}
 
-				function is_forward_usr_brk() {
-					return is_temporary_breakpoint() && get_tmp_brk_dir() > 0;
+				function is_deferred_tmpbrk() {
+					return is_tmpbrk() && get_op(pc())[1];
 				}
 
-				function run() {
-					if (is_forward_usr_brk()) {
-						const brkpos = pc();
-						remove_breakpoint();
-						single_step();
-						set_breakpoint_at(brkpos);
-					}
+				function rawrun() {
 					raw = vm(vm_words, raw, (_raw) => {
 						raw = _raw;
 						dump_callback_fn(self);
 					});
 				}
 
+				function run() {
+					if (raw[PC0] < 0) throw new Error("program has ended");
+					if (raw[PC1] < 0) {
+						raw[PC1] = 0;
+					} else if (is_deferred_tmpbrk()) {
+						const brkpos = pc();
+						remove_tmpbrk();
+						single_step();
+						set_tmpbrk_at(brkpos);
+					}
+					rawrun();
+					if (raw[EXC]) {
+						throw new Error("vm threw: " + raw[EXC]);
+					} else if (raw[PC0] < 0) {
+						return ["end"];
+					} else if (!has_iterations_left()) {
+						return ["outofgas"];
+					} else if (is_tmpbrk(-1)) {
+						rewind();
+						if (!is_deferred_tmpbrk()) {
+							remove_tmpbrk();
+							const brkpos = pc();
+							// there are two methods for executing
+							// up until and including the op under
+							// the cursor, and neither of them work
+							// for all cases. single stepping works
+							// for everything except calls (because
+							// you single-step into the function
+							// call, and not over it), and goto
+							// pc+1 works for everything except
+							// loops.
+							if (is_call()) {
+								goto_pc_plus_one_at_breakpoint();
+							} else {
+								single_step();
+							}
+							set_tmpbrk_at(brkpos); // restore breakpoint
+						}
+						return ["tmpbrk"];
+					} else if (is_op(-1, OP_BRK)) {
+						return ["brk"];
+					} else if (is_op(-1, OP_ASSERT)) {
+						return ["assert"];
+					} else {
+						throw new Error("unhandled break");
+					}
+				}
+
 				function single_step() {
 					const tmp = get_iteration_counter();
 					set_iteration_counter(1); // prepare single-step
-					run(); // single-step
+					rawrun(); // single-step
 					set_iteration_counter(tmp-1); // restore iteration counter
 				}
 
@@ -936,46 +985,20 @@ function new_compiler(read_file_fn) {
 				function goto_pc_plus_one_at_breakpoint() {
 					const bp1 = pc(); // NOTE pc() returns copy, not reference
 					bp1[1] += 1;
-					set_breakpoint_at(bp1);
+					set_tmpbrk_at(bp1);
 					for (;;) {
-						run();
+						rawrun();
 						if (pceq(pc(-1), bp1)) {
 							rewind();
 							break;
-						} else {
-							step_over();
 						}
 					}
-					remove_breakpoint_at(bp1);
+					remove_tmpbrk_at(bp1);
 				}
 
 				function is_call() {
 					const op = get_pc_op();
 					return op[0] === opresolv(CALL) || op[0] === opresolv(WORD, "call");
-				}
-
-				function step_over() {
-					assert_can_run();
-					rewind();
-					if (is_forward_usr_brk()) return; // handle in run() instead
-					const is_usr_brk = is_temporary_breakpoint();
-					if (is_usr_brk) remove_breakpoint();
-					const brkpos = pc();
-					// there are two methods for executing
-					// up until and including the op under
-					// the cursor, and neither of them work
-					// for all cases. single stepping works
-					// for everything except calls (because
-					// you single-step into the function
-					// call, and not over it), and goto
-					// pc+1 works for everything except
-					// loops.
-					if (is_call()) {
-						goto_pc_plus_one_at_breakpoint();
-					} else {
-						single_step();
-					}
-					if (is_usr_brk) set_breakpoint_at(brkpos); // restore breakpoint
 				}
 
 				const get_stack  = () => raw[STACK];
@@ -1008,9 +1031,6 @@ function new_compiler(read_file_fn) {
 					did_exit: () => raw[PC0] < 0,
 					did_throw: () => !!raw[EXC],
 					get_exception:  () => raw[EXC],
-					broke_at_assertion:   () => get_pc_op(-1)[0] === opresolv(WORD, "assert"),
-					broke_at_breakpoint:  () => get_pc_op(-1)[0] === BRK,
-					broke_at_user_breakpoint:  () => is_temporary_breakpoint_at(pc(-1)),
 					get_position,
 					pc,
 					get_position_human: () => {
@@ -1018,13 +1038,10 @@ function new_compiler(read_file_fn) {
 						if (!pos) return "???";
 						return pos[0] + ":" + (1+pos[1]) + ":" + (1+pos[2]);
 					},
-					set_breakpoint,
-					remove_breakpoint,
 					set_pc_to_export_word_index: (i) => {
 						raw[PC0] = export_word_indices[i];
-						raw[PC1] = 0;
+						raw[PC1] = -1;
 					},
-					step_over,
 					run,
 					get_tagged_stack,
 					set_dump_callback,
@@ -1049,9 +1066,7 @@ function new_compiler(read_file_fn) {
 				export_word_indices,
 				export_word_names,
 				vm_src,
-				set_breakpoint_at_cursor,
-				//set_breakpoint_at,
-				//remove_breakpoint_at,
+				set_tmpbrk_at_cursor,
 			};
 		}
 

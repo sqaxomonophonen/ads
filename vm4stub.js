@@ -58,11 +58,13 @@
 			for (;;) {
 				if (pc1 >= words[pc0].length) throw new Error("bad prg: ifskip into void"); // XXX(size)
 				advance();
+				let op = current_opcode;
+				if (words[pc0][pc1-1].length >= 3) op = words[pc0][pc1-1][2]; // XXX(size) / UGLY HACK for allowing brks on if/else/endif (NOTE we don't know what opcode brk is)
 				// stop at "else" or "endif" when not nested:
-				if (!__depth && (current_opcode == 2 || current_opcode == 3)) break;
+				if (!__depth && (op == 2 || op == 3)) break;
 				// skip over nested if...endif:
-				__depth += (current_opcode == 1) - (current_opcode == 3); // "if" increments depth, "endif" decrements
-				//__depth += [,1,,-1][current_opcode]|0; // not shorter after uglify
+				__depth += (op == 1) - (op == 3); // "if" increments depth, "endif" decrements
+				//__depth += [,1,,-1][op]|0; // not shorter after uglify
 			}
 		},
 
@@ -196,10 +198,17 @@
 	// XXX(size) this is the "debug version". in release, try:
 	//    for(;advance(),!ops[current_opcode](););
 	try {
+		if (pc0 < 0) throw new Error("program has ended");
 		while (max_instructions > 0) {
 			max_instructions--;
 			advance();
-			if (ops[current_opcode]()) break;
+			const opfn = ops[current_opcode];
+			if (typeof opfn !== "function") throw new Error(
+				"ops[" + current_opcode + "] is not a function"
+				+ " / state=" + JSON.stringify(bundle_state())
+				+ " / words=" + JSON.stringify(words)
+			);
+			if (opfn()) break;
 		}
 	} catch (e) {
 		exc = e;

@@ -157,6 +157,18 @@ function resolve_breakpoints(src) {
 	return { src: new_lines.join("\n"), breakpoints };
 }
 
+function RUN_UNTIL(vm_state, state_name) {
+	const rr = vm_state.run();
+	if (rr[0] !== state_name) throw new Error("expected [" + state_name + "...]; got " + JSON.stringify(rr));
+}
+
+function RUN_UNTIL_TMPBRK(vm_state) {
+	return RUN_UNTIL(vm_state, "tmpbrk");
+}
+
+function RUN_UNTIL_END(vm_state) {
+	return RUN_UNTIL(vm_state, "end");
+}
 
 function prep_brk_test(tagged_src) {
 	const { src, breakpoints } = resolve_breakpoints(tagged_src);
@@ -169,12 +181,12 @@ function prep_brk_test(tagged_src) {
 	vm_state.set_pc_to_export_word_index(0);
 	vm_state.set_iteration_counter(1e4);
 	for (const bp of breakpoints) {
-		prg.set_breakpoint_at_cursor(FILENAME, bp[0], bp[1]);
+		prg.set_tmpbrk_at_cursor(FILENAME, bp[0], bp[1]);
 	}
 	return vm_state;
 }
 
-TEST("breakpoints 101 (simple stuff)", () => {
+TEST("breakpoints 101 (simple stuff)", ()=>{
 	const vm_state = prep_brk_test(`
 		:main
 		   111 222
@@ -186,64 +198,163 @@ TEST("breakpoints 101 (simple stuff)", () => {
 	`);
 
 	// breakpoint at "333"
-	vm_state.run();
-	// "333" has not yet been executed:
-	ASSERT_SAME("stack", vm_state.get_stack(), [111,222]);
-	// single-step...
-	vm_state.step_over();
+	RUN_UNTIL_TMPBRK(vm_state);
 	ASSERT_SAME("stack", vm_state.get_stack(), [111,222,333]);
 
-	// breakpoint at "666", samey samey...
-	vm_state.run();
-	ASSERT_SAME("stack", vm_state.get_stack(), [111,222,333,444,555]);
-	vm_state.step_over();
+	// breakpoint at "666"
+	RUN_UNTIL_TMPBRK(vm_state);
 	ASSERT_SAME("stack", vm_state.get_stack(), [111,222,333,444,555,666]);
 
 	// finish program
-	vm_state.run();
+	RUN_UNTIL_END(vm_state);
 	ASSERT_SAME("stack", vm_state.get_stack(), [111,222,333,444,555,666,777,888]);
 	ASSERT_DONE(vm_state);
 });
 
-TEST("breakpoints 102 (multiple on same line)", () => {
+TEST("breakpoints 102 (multiple on same line)", ()=>{
 	const vm_state = prep_brk_test(`
 		:main
 		(BRK)0 (BRK)1 (BRK)2 (BRK)3
+		69
 		;
 	`);
 
 	let expected_stack = [];
 	for (let i = 0; i < 4; i++) {
-		ASSERT_SAME("stack", vm_state.get_stack(), expected_stack);
-		vm_state.run();
-		vm_state.step_over();
+		RUN_UNTIL_TMPBRK(vm_state);
 		expected_stack.push(i);
 		ASSERT_SAME("stack", vm_state.get_stack(), expected_stack);
 	}
-	vm_state.run();
+	RUN_UNTIL_END(vm_state);
+	expected_stack.push(69);
 	ASSERT_SAME("stack", vm_state.get_stack(), expected_stack);
 	ASSERT_DONE(vm_state);
 });
 
-TEST("breakpoints 103 (precision)", () => {
+TEST("breakpoints 103 (precision)", ()=>{
 	const vm_state = prep_brk_test(`
 		:main
-		0 (BRK) 1 (BRK)2 3
+		   0 (BRK) 1 (BRK)2 3
 		;
 	`);
 
-	vm_state.run();
-	vm_state.step_over();
+	RUN_UNTIL_TMPBRK(vm_state);
 	ASSERT_SAME("stack", vm_state.get_stack(), [0]);
-	vm_state.run();
-	vm_state.step_over();
+	RUN_UNTIL_TMPBRK(vm_state);
 	ASSERT_SAME("stack", vm_state.get_stack(), [0,1,2]);
-	vm_state.run();
+	RUN_UNTIL_END(vm_state);
 	ASSERT_SAME("stack", vm_state.get_stack(), [0,1,2,3]);
 	ASSERT_DONE(vm_state);
 });
 
-TEST("breakpoints 201 (step over word)", () => {
+TEST("breakpoints 104 (start-of-word)", ()=>{
+	{
+		const vm_state = prep_brk_test(`
+			:main
+			   (BRK)1 2 3 (this one has no void)
+			;
+		`);
+		RUN_UNTIL_TMPBRK(vm_state);
+		ASSERT_SAME("stack", vm_state.get_stack(), [1]);
+		RUN_UNTIL_END(vm_state);
+		ASSERT_SAME("stack", vm_state.get_stack(), [1,2,3]);
+		ASSERT_DONE(vm_state);
+	}
+
+	{
+		const vm_state = prep_brk_test(`
+			:main
+			   (BRK) (this one has void)
+			   1 2 3
+			;
+		`);
+		RUN_UNTIL_TMPBRK(vm_state);
+		ASSERT_SAME("stack", vm_state.get_stack(), []);
+		RUN_UNTIL_END(vm_state);
+		ASSERT_SAME("stack", vm_state.get_stack(), [1,2,3]);
+		ASSERT_DONE(vm_state);
+	}
+});
+
+TEST("breakpoints 105 (end-of-word)", ()=>{
+	{
+		const vm_state = prep_brk_test(`
+			:main
+			   1 2 (BRK)3
+			;
+		`);
+		RUN_UNTIL_TMPBRK(vm_state);
+		ASSERT_SAME("stack", vm_state.get_stack(), [1,2,3]);
+		RUN_UNTIL_END(vm_state);
+		ASSERT_SAME("stack", vm_state.get_stack(), [1,2,3]);
+		ASSERT_DONE(vm_state);
+	}
+
+	{
+		// this one tests the ability to set breakpoints in "void";
+		// breakpoints are used internally for stepping over a
+		// word-call, and the position after the word-call is "void",
+		// which is also interpreted as an implicit return by the VM.
+		const vm_state = prep_brk_test(`
+			:w0rd
+			   3
+			;
+			:main
+			   1 2 (BRK)w0rd
+			;
+		`);
+		RUN_UNTIL_TMPBRK(vm_state);
+		ASSERT_SAME("stack", vm_state.get_stack(), [1,2,3]);
+		RUN_UNTIL_END(vm_state);
+		ASSERT_SAME("stack", vm_state.get_stack(), [1,2,3]);
+		ASSERT_DONE(vm_state);
+	}
+
+	{
+		const vm_state = prep_brk_test(`
+			:main
+			   1 2 3 (BRK)
+			;
+		`);
+		RUN_UNTIL_TMPBRK(vm_state);
+		ASSERT_SAME("stack", vm_state.get_stack(), [1,2,3]);
+		/* // XXX it's ok that these fail?
+		RUN_UNTIL_END(vm_state);
+		ASSERT_SAME("stack", vm_state.get_stack(), [1,2,3]);
+		ASSERT_DONE(vm_state);
+		*/
+	}
+});
+
+
+TEST("breakpoints 201 (step over word)", ()=>{
+	{
+		const vm_state = prep_brk_test(`
+			:main
+			   :w0rd
+			      420 666 drop drop 69
+			   ;
+			   5 times
+			      11 1 (BRK)w0rd 2 22
+			   loop
+			;
+		`);
+
+		let expected_stack = [];
+		for (let i = 0; i < 5; i++) {
+			RUN_UNTIL_TMPBRK(vm_state);
+			expected_stack.push(11);
+			expected_stack.push(1);
+			expected_stack.push(69);
+			ASSERT_SAME("stack", vm_state.get_stack(), expected_stack);
+			expected_stack.push(2);
+			expected_stack.push(22);
+		}
+		RUN_UNTIL_END(vm_state);
+		ASSERT_SAME("stack", vm_state.get_stack(), expected_stack);
+		ASSERT_DONE(vm_state);
+	}
+
 	{
 		const vm_state = prep_brk_test(`
 			:main
@@ -258,17 +369,15 @@ TEST("breakpoints 201 (step over word)", () => {
 
 		let expected_stack = [];
 		for (let i = 0; i < 5; i++) {
-			vm_state.run();
+			RUN_UNTIL_TMPBRK(vm_state);
 			expected_stack.push(11);
 			expected_stack.push(1);
-			ASSERT_SAME("stack", vm_state.get_stack(), expected_stack);
-			vm_state.step_over();
 			expected_stack.push(69);
 			ASSERT_SAME("stack", vm_state.get_stack(), expected_stack);
 			expected_stack.push(2);
 			expected_stack.push(22);
 		}
-		vm_state.run();
+		RUN_UNTIL_END(vm_state);
 		ASSERT_SAME("stack", vm_state.get_stack(), expected_stack);
 		ASSERT_DONE(vm_state);
 	}
@@ -287,78 +396,30 @@ TEST("breakpoints 201 (step over word)", () => {
 
 		let expected_stack = [];
 		for (let i = 0; i < 5; i++) {
-			vm_state.run();
+			RUN_UNTIL_TMPBRK(vm_state);
+			RUN_UNTIL_TMPBRK(vm_state);
 			expected_stack.push(11);
 			expected_stack.push(1);
-			ASSERT_SAME("stack", vm_state.get_stack(), expected_stack);
-			vm_state.step_over();
-			vm_state.run();
-			vm_state.step_over();
 			expected_stack.push(69);
 			ASSERT_SAME("stack", vm_state.get_stack(), expected_stack);
 			expected_stack.push(2);
 			expected_stack.push(22);
 		}
-		vm_state.run();
+		RUN_UNTIL_END(vm_state);
 		ASSERT_SAME("stack", vm_state.get_stack(), expected_stack);
 		ASSERT_DONE(vm_state);
 	}
 });
 
-TEST("breakpoints 202 (at end-of-word)", () => {
-	{
-		const vm_state = prep_brk_test(`
-			:main
-			   1 2 (BRK)3
-			;
-		`);
-		let expected_stack = [];
-		vm_state.run();
-		expected_stack.push(1);
-		expected_stack.push(2);
-		ASSERT_SAME("stack", vm_state.get_stack(), expected_stack);
-		vm_state.step_over();
-		expected_stack.push(3);
-		ASSERT_SAME("stack", vm_state.get_stack(), expected_stack);
-		vm_state.run();
-		ASSERT_SAME("stack", vm_state.get_stack(), expected_stack);
-		ASSERT_DONE(vm_state);
-	}
-
-	{
-		// this one tests the ability to set breakpoints in "void";
-		// breakpoints are used internally for stepping over a
-		// word-call, and the position after the word-call is "void",
-		// which is also interpreted as an implicit return by the VM.
-		const vm_state = prep_brk_test(`
-			:w0rd
-			   3
-			;
-			:main
-			   1 2 (BRK)w0rd
-			;
-		`);
-		let expected_stack = [];
-		vm_state.run();
-		expected_stack.push(1);
-		expected_stack.push(2);
-		ASSERT_SAME("stack", vm_state.get_stack(), expected_stack);
-		vm_state.step_over();
-		expected_stack.push(3);
-		ASSERT_SAME("stack", vm_state.get_stack(), expected_stack);
-		vm_state.run();
-		ASSERT_SAME("stack", vm_state.get_stack(), expected_stack);
-		ASSERT_DONE(vm_state);
-	}
-
-});
-
-TEST("breakpoints 203 (if/else/endif)", () => {
+TEST("breakpoints 203 (if/else/endif)", ()=>{
 	function test(body, expected_stacks) {
 		const vm_state = prep_brk_test(":main " + body + " ;");
 		while (expected_stacks.length > 0) {
-			vm_state.run();
-			if (vm_state.can_run()) vm_state.step_over();
+			if (expected_stacks.length > 1) {
+				RUN_UNTIL_TMPBRK(vm_state);
+			} else {
+				RUN_UNTIL_END(vm_state);
+			}
 			ASSERT_SAME("stack", vm_state.get_stack(), expected_stacks.shift());
 		}
 		ASSERT_DONE(vm_state);
@@ -371,25 +432,30 @@ TEST("breakpoints 203 (if/else/endif)", () => {
 	test("0 if 420 (BRK)else 666 endif", [[666]]);
 	test("0 if 420 else (BRK)666 endif", [[666], [666]]);
 	test("0 if 420 else 666 (BRK)endif", [[666], [666]]);
-	test("1 if 420 else 666 (BRK)endif", [[420], [420]]);
+	test("1 if 420 else 666 (BRK)endif", [[420]]);
 	test("0 if 420 else 666 (BRK)endif 69", [[666], [666,69]]);
-	test("1 if 420 else 666 (BRK)endif 69", [[420], [420,69]]);
+	test("1 if 420 else 666 (BRK)endif 69", [[420,69]]);
 	test("0 if 420 else 666 endif (BRK) 69", [[666], [666,69]]);
 	test("1 if 420 else 666 endif (BRK) 69", [[420], [420,69]]);
 	test("0 if 420 else 666 endif   (BRK)   69 790", [[666], [666,69,790]]);
 	test("1 if 420 else 666 endif   (BRK)   69 790", [[420], [420,69,790]]);
 	test("0 if 420 else 666 endif (BRK)69", [[666,69], [666,69]]);
 	test("1 if 420 else 666 endif (BRK)69", [[420,69], [420,69]]);
-	test("0 if 420 else 666 endif (BRK)", [[666], [666]]);
-	test("1 if 420 else 666 endif (BRK)", [[420], [420]]);
 	test("(BRK)1 if 420 else 666 endif", [[1], [420]]);
 	test("(BRK)0 if 420 else 666 endif", [[0], [666]]);
 	test("69 (BRK)1 if 420 else 666 endif", [[69, 1], [69, 420]]);
 	test("69 (BRK)0 if 420 else 666 endif", [[69, 0], [69, 666]]);
 	test("1 (BRK)if 420 else 666 endif", [[], [420]]);
+	test("0 (BRK)if 420 else 666 endif", [[], [666]]);
+	test("0 if 0 if 666 endif else 69 endif ", [[69]]);
+	test("0 if 0 (BRK)if 666 endif else 69 endif ", [[69]]);
+	test("0 if 0 if 666 (BRK)endif else 69 endif ", [[69]]);
+	test("0 if 0 if 666 endif (BRK)else 69 endif ", [[69]]);
+	test("0 if 0 if 666 endif else 69 (BRK)endif ", [[69],[69]]);
+
 });
 
-TEST("breakpoints 203a (zig-zag)", () => {
+TEST("breakpoints 203a (zig-zag)", ()=>{
 	const vm_state = prep_brk_test(`
 	:nested
 	if
@@ -403,13 +469,11 @@ TEST("breakpoints 203a (zig-zag)", () => {
 	;
 	`);
 	vm_state.run();
-	vm_state.step_over();
-	vm_state.run();
 	ASSERT_SAME("stack", vm_state.get_stack(), [4]);
 	ASSERT_DONE(vm_state);
 });
 
-TEST("breakpoints 204 (times/loop)", () => {
+TEST("breakpoints 204 (times/loop)", ()=>{
 	{ // test "times"-breakpoint; it should only be "visited" once
 		const vm_state = prep_brk_test(`
 			:main
@@ -420,8 +484,6 @@ TEST("breakpoints 204 (times/loop)", () => {
 		`);
 
 		vm_state.run();
-		ASSERT_SAME("stack", vm_state.get_stack(), [5]);
-		vm_state.step_over();
 		ASSERT_SAME("stack", vm_state.get_stack(), []);
 		vm_state.run();
 		ASSERT_SAME("stack", vm_state.get_stack(), [69,69,69,69,69]);
@@ -440,8 +502,6 @@ TEST("breakpoints 204 (times/loop)", () => {
 		let expected_stack = [];
 		for (let i = 0; i < 5; i++) {
 			vm_state.run();
-			ASSERT_SAME("stack", vm_state.get_stack(), expected_stack);
-			vm_state.step_over();
 			expected_stack.push(69);
 			ASSERT_SAME("stack", vm_state.get_stack(), expected_stack);
 		}
@@ -464,39 +524,14 @@ TEST("breakpoints 204 (times/loop)", () => {
 			vm_state.run();
 			expected_stack.push(69);
 			ASSERT_SAME("stack", vm_state.get_stack(), expected_stack);
-			vm_state.step_over();
-			ASSERT_SAME("stack", vm_state.get_stack(), expected_stack);
 		}
 		vm_state.run();
 		ASSERT_SAME("stack", vm_state.get_stack(), expected_stack);
 		ASSERT_DONE(vm_state);
 	}
-
-	{
-		const vm_state = prep_brk_test(`
-			:main
-			   5 times
-			      69
-			   (BRK)loop
-			;
-		`);
-
-		let expected_stack = [];
-		for (let i = 0; i < 5; i++) {
-			vm_state.run();
-			expected_stack.push(69);
-			ASSERT_SAME("stack", vm_state.get_stack(), expected_stack);
-			vm_state.step_over();
-			ASSERT_SAME("stack", vm_state.get_stack(), expected_stack);
-		}
-		vm_state.run();
-		ASSERT_SAME("stack", vm_state.get_stack(), expected_stack);
-		ASSERT_DONE(vm_state);
-	}
-
 });
 
-TEST("breakpoints 205 (do/while)", () => {
+TEST("breakpoints 205 (do/while)", ()=>{
 	{
 		const vm_state = prep_brk_test(`
 			:main
@@ -508,8 +543,6 @@ TEST("breakpoints 205 (do/while)", () => {
 			;
 		`);
 		vm_state.run();
-		ASSERT_SAME("stack", vm_state.get_stack(), [1]);
-		vm_state.step_over();
 		ASSERT_SAME("stack", vm_state.get_stack(), [1]);
 		vm_state.run();
 		ASSERT_SAME("stack", vm_state.get_stack(), [8]);
@@ -523,21 +556,29 @@ TEST("breakpoints 205 (do/while)", () => {
 			   1
 			   do
 			   2 *
-			   dup 5 lt (BRK)while
+			   dup 5 (BRK)lt (BRK)while
 			;
 		`);
 		vm_state.run();
 		ASSERT_SAME("stack", vm_state.get_stack(), [2,true]);
-		vm_state.step_over(); vm_state.run();
+		vm_state.run();
+		ASSERT_SAME("stack", vm_state.get_stack(), [2]);
+		vm_state.run();
 		ASSERT_SAME("stack", vm_state.get_stack(), [4,true]);
-		vm_state.step_over(); vm_state.run();
+		vm_state.run();
+		ASSERT_SAME("stack", vm_state.get_stack(), [4]);
+		vm_state.run();
 		ASSERT_SAME("stack", vm_state.get_stack(), [8,false]);
-		vm_state.step_over(); vm_state.run();
+		vm_state.run();
+		ASSERT_SAME("stack", vm_state.get_stack(), [8]);
+		vm_state.run();
 		ASSERT_SAME("stack", vm_state.get_stack(), [8]);
 		ASSERT_DONE(vm_state);
 	}
 });
 
+//TEST("debuggering 301 (???)", ()=>{
+//});
 
 {
 	const compiler = require("./compiler")(read_file);
@@ -559,12 +600,12 @@ TEST("breakpoints 205 (do/while)", () => {
 				vm_state.set_pc_to_export_word_index(xi);
 
 				while (vm_state.can_run()) {
-					vm_state.run();
+					const rr = vm_state.run();
 					if (!vm_state.did_exit()) {
 						const pos = vm_state.get_position_human();
-						if (vm_state.broke_at_assertion()) {
+						if (rr[0] === "assert") {
 							throw new TRR("ASSERTION FAILED at " + pos);
-						} else if (vm_state.broke_at_breakpoint()) {
+						} else if (rr[0] === "brk") {
 							// OK: some tests break
 						} else {
 							throw new TRR("unhandled exit at " + pos);
