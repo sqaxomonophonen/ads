@@ -239,7 +239,7 @@ const poll_state = (() => {
 const vm = (() => {
 	let n_passes = 1;
 	let actual_passes = null;
-	let max_iterations = 250e3;
+	let max_cycles = 250e3;
 	let cursor_position = null;
 	let vm = null;
 	let root;
@@ -253,7 +253,7 @@ const vm = (() => {
 	function publish(o) {
 		poll_state.push({
 			"n_passes": n_passes,
-			"max_iterations": max_iterations,
+			"max_cycles": max_cycles,
 			"entrypoint_filename": entrypoint_filename,
 			"entrypoint_word_path": entrypoint_word_path,
 			...o,
@@ -296,19 +296,19 @@ const vm = (() => {
 			prg.set_tmpbrk_at_cursor(curpos[0], curpos[1], curpos[2]);
 		}
 
-		let last_attempt_iteration_count, vm_state, iteration_budget_exceeded,
+		let last_attempt_cycle_count, vm_state, cycle_budget_exceeded,
 		    assertion_failed, runtime_error, passes_left ;
-		const get_iteration_count = () => max_iterations - vm_state.get_iteration_counter();
+		const get_cycle_count = () => max_cycles - vm_state.get_cycle_counter();
 
 		for (let attempt = 0; attempt < 2; attempt++) {
 			vm_state = prg.new_state();
 			vm_state.set_pc_to_export_word_index(0);
-			vm_state.set_iteration_counter(
-				attempt === 0 ? max_iterations            :
-				attempt === 1 ? last_attempt_iteration_count :
+			vm_state.set_cycle_counter(
+				attempt === 0 ? max_cycles            :
+				attempt === 1 ? last_attempt_cycle_count :
 				0);
 
-			iteration_budget_exceeded = false;
+			cycle_budget_exceeded = false;
 			assertion_failed = false;
 			runtime_error = null;
 			passes_left = n_passes;
@@ -324,15 +324,15 @@ const vm = (() => {
 				if (!vm_state.did_exit()) {
 					if (rr[0] === "tmpbrk") {
 						passes_left--;
-						last_attempt_iteration_count = get_iteration_count() - 1;
+						last_attempt_cycle_count = get_cycle_count() - 1;
 					} else if (rr[0] === "brk") {
 						// in-code breakpoint
 						LOG("BRK at " + JSON.stringify(vm_state.pc(-1)) +  " at " + vm_state.get_position_human());
 					} else if (rr[0] === "assert") {
 						assertion_failed = true;
 						break;
-					} else if (vm_state.get_iteration_counter() === 0) {
-						iteration_budget_exceeded = true;
+					} else if (vm_state.get_cycle_counter() === 0) {
+						cycle_budget_exceeded = true;
 						break;
 					} else {
 						throw new Error("unhandled break type " + JSON.stringify(vm_state.get_raw()));
@@ -340,10 +340,10 @@ const vm = (() => {
 				}
 			}
 
-			if (passes_left === 0 || assertion_failed || runtime_error || (attempt === 0 && iteration_budget_exceeded)) {
+			if (passes_left === 0 || assertion_failed || runtime_error || (attempt === 0 && cycle_budget_exceeded)) {
 				break;
 			}
-			iteration_budget_exceeded = false;
+			cycle_budget_exceeded = false;
 		}
 
 		let error = null;
@@ -351,18 +351,21 @@ const vm = (() => {
 			error = "runtime error " + runtime_error;
 		} else if (assertion_failed) {
 			error = "assertion failed";
-		} else if (iteration_budget_exceeded) {
-			error = "at max iterations (" + max_iterations + ")";
+		} else if (cycle_budget_exceeded) {
+			error = "at max cycles (" + max_cycles + ")";
 		}
 		if (error !== null) error += " at " + vm_state.get_position_human();
 		actual_passes = Math.max(1, n_passes - passes_left);
 		publish({
 			actual_passes,
-			n_iterations: get_iteration_count(),
+			n_cycles: get_cycle_count(),
 			stack: vm_state.get_tagged_stack(),
 			rstack: vm_state.get_rstack(),
 			error,
 		});
+	}
+
+	function single_step(d) {
 	}
 
 	function set_position(pos) {
@@ -395,15 +398,16 @@ const vm = (() => {
 		if (n_passes !== old_n_passes) rerun();
 	}
 
-	function max_iterations_scale(scalar) {
-		max_iterations *= scalar;
+	function max_cycles_scale(scalar) {
+		max_cycles *= scalar;
 		rerun();
 	}
 
 	return {
 		rerun,
+		single_step,
 		add_to_n_passes,
-		max_iterations_scale,
+		max_cycles_scale,
 		set_entrypoint_at_position,
 		set_position,
 	};
@@ -454,7 +458,7 @@ function process_client_message(msg) {
 						"position",
 						"entrypoint",
 						"passes",
-						"max_iterations_scale",
+						"max_cycles_scale",
 						"prepare_goto_hack",
 					],
 				},
@@ -491,8 +495,8 @@ function process_client_message(msg) {
 			vm.set_entrypoint_at_position(args);
 		} else if (p.command === "passes") {
 			vm.add_to_n_passes(args.delta);
-		} else if (p.command === "max_iterations_scale") {
-			vm.max_iterations_scale(args.scalar);
+		} else if (p.command === "max_cycles_scale") {
+			vm.max_cycles_scale(args.scalar);
 		} else if (p.command === "prepare_goto_hack") {
 			goto_hack_arguments = p.arguments;
 		} else {
@@ -535,15 +539,17 @@ function process_client_message(msg) {
 		send(p.id, {error: {"code":-32800,"message":"Request cancelled"}});
 	} else if (m === "textDocument/implementation") {
 	} else if (m === "textDocument/typeDefinition") {
-		const arg = goto_hack_arguments;
-		if (!arg) {
+		const args = goto_hack_arguments;
+		if (!args) {
 			send_result(null);
 		} else {
-			switch (arg.what) {
-			case "step":
+			const d = args.direction;
+			switch (args.what) {
+			case "step": {
+				vm.single_step(d);
+			} break;
 			case "callstack":
 			case "brk": {
-				const d = goto_hack_arguments.direction;
 				send_result({
 					uri: p.textDocument.uri,
 					range: {
@@ -553,7 +559,7 @@ function process_client_message(msg) {
 				});
 			} break;
 			default:
-				console.error("what what? " + arg.what);
+				console.error("what what? " + args.what);
 				send_result(null);
 
 			}

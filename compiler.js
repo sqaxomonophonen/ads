@@ -877,17 +877,18 @@ function new_compiler(read_file_fn) {
 			function bless(raw) {
 				let self;
 				const PC0=0, PC1=1, STACK=2, RSTACK=3, GLOBALS=4,
-				      ITERATION_COUNT=5, VALUE_TYPE_TAG_MAP=6, EXC=7;
+				      CYCLE_COUNT=5, VALUE_TYPE_TAG_MAP=6, EXC=7;
 				const pc0 = () => raw[PC0];
 				const pc1 = () => raw[PC1];
 				const pc = (delta) => [pc0(), pc1()+(delta|0)];
 				const get_pc_op = (d) => vm_words[pc0()][pc1()+(d|0)];
 				const get_position = () => dbg_words[pc0()][pc1()-1];
-				const get_iteration_counter =  () => raw[ITERATION_COUNT];
-				const set_iteration_counter = (n) => raw[ITERATION_COUNT] = Math.ceil(n);
+				const get_cycle_counter =  () => raw[CYCLE_COUNT];
+				const set_cycle_counter = (n) => raw[CYCLE_COUNT] = Math.ceil(n);
 				let dump_callback_fn;
 				function rewind() {
 					raw[PC1]--;
+					raw[CYCLE_COUNT]++;
 				}
 
 				function is_op(delta, op) {
@@ -904,12 +905,12 @@ function new_compiler(read_file_fn) {
 				}
 
 				const has_ended = () => raw[PC0] < 0;
-				const has_iterations_left = () => raw[ITERATION_COUNT] > 0;
-				const can_run = () => !has_ended() && has_iterations_left();
+				const has_cycles_left = () => raw[CYCLE_COUNT] > 0;
+				const can_run = () => !has_ended() && has_cycles_left();
 
 				function assert_can_run() {
 					if (has_ended()) throw new Error("cannot run(); program has ended");
-					if (!has_iterations_left()) throw new Error("cannot run(); no iterations left");
+					if (!has_cycles_left()) throw new Error("cannot run(); no cycles left");
 				}
 
 				function is_deferred_tmpbrk() {
@@ -938,7 +939,7 @@ function new_compiler(read_file_fn) {
 						throw new Error("vm threw: " + raw[EXC]);
 					} else if (raw[PC0] < 0) {
 						return ["end"];
-					} else if (!has_iterations_left()) {
+					} else if (!has_cycles_left()) {
 						return ["outofgas"];
 					} else if (is_tmpbrk(-1)) {
 						rewind();
@@ -972,10 +973,10 @@ function new_compiler(read_file_fn) {
 				}
 
 				function single_step() {
-					const tmp = get_iteration_counter();
-					set_iteration_counter(1); // prepare single-step
+					const tmp = get_cycle_counter();
+					set_cycle_counter(1); // prepare single-step
 					rawrun(); // single-step
-					set_iteration_counter(tmp-1); // restore iteration counter
+					set_cycle_counter(tmp-1); // restore cycle counter
 				}
 
 				function pceq(p0, p1) {
@@ -1024,8 +1025,8 @@ function new_compiler(read_file_fn) {
 				self = {
 					get_raw: () => raw,
 					can_run,
-					get_iteration_counter,
-					set_iteration_counter,
+					get_cycle_counter,
+					set_cycle_counter,
 					get_stack,
 					get_rstack,
 					did_exit: () => raw[PC0] < 0,

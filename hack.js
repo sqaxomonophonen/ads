@@ -71,7 +71,7 @@ function present(o) {
 	if (!o) {
 		$("#entrypoint").innerText = "-";
 		$("#passes").innerText = "-";
-		$("#iterations").innerText = "-";
+		$("#cycles").innerText = "-";
 		o = {
 			stack: [],
 			rstack: [],
@@ -80,7 +80,7 @@ function present(o) {
 	} else {
 		$("#entrypoint").innerText = ":" + o.entrypoint_word_path + " (" + o.entrypoint_filename + ")";
 		$("#passes").innerText = o.actual_passes + "/" + o.n_passes + "p";
-		$("#iterations").innerText = Math.ceil(o.n_iterations) + "/" + Math.ceil(o.max_iterations) + "o";
+		$("#cycles").innerText = Math.ceil(o.n_cycles) + "/" + Math.ceil(o.max_cycles) + "o";
 	}
 
 	const { stack, rstack, error } = o;

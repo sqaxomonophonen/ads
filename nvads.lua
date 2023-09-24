@@ -50,8 +50,8 @@ function ADS_initialize()
 		vim.lsp.buf.execute_command({command="passes",arguments={delta=delta}})
 	end
 
-	local function max_iterations_scale(scalar)
-		vim.lsp.buf.execute_command({command="max_iterations_scale",arguments={scalar=scalar}})
+	local function max_cycles_scale(scalar)
+		vim.lsp.buf.execute_command({command="max_cycles_scale",arguments={scalar=scalar}})
 	end
 
 	--[[
@@ -70,8 +70,8 @@ function ADS_initialize()
 	vim.keymap.set('n', '<C-g>', function() goto_hack("brk",        -1) end)
 	vim.keymap.set('n', '<C-y>', function() print("A+") end)
 	vim.keymap.set('n', '<C-h>', function() print("A-") end)
-	vim.keymap.set('n', '<C-u>', function() max_iterations_scale(2) end)
-	vim.keymap.set('n', '<C-j>', function() max_iterations_scale(0.5) end)
+	vim.keymap.set('n', '<C-u>', function() max_cycles_scale(2) end)
+	vim.keymap.set('n', '<C-j>', function() max_cycles_scale(0.5) end)
 
 end
 

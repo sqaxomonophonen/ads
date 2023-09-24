@@ -132,7 +132,7 @@ TEST("trace by word path", () => {
 		}
 		const vm_state = prg.new_state();
 		vm_state.set_pc_to_export_word_index(0);
-		vm_state.set_iteration_counter(1e3);
+		vm_state.set_cycle_counter(1e3);
 		vm_state.run();
 		ASSERT_SAME("stack", vm_state.get_stack(), expected_stack);
 	}
@@ -179,12 +179,46 @@ function prep_brk_test(tagged_src) {
 	if (prg.export_word_indices.length !== 1) throw new TRR("expected 1 exported word index, got: " + JSON.stringify(prg.export_word_indices));
 	const vm_state = prg.new_state();
 	vm_state.set_pc_to_export_word_index(0);
-	vm_state.set_iteration_counter(1e4);
+	vm_state.set_cycle_counter(1e4);
 	for (const bp of breakpoints) {
 		prg.set_tmpbrk_at_cursor(FILENAME, bp[0], bp[1]);
 	}
 	return vm_state;
 }
+
+TEST("cycles", ()=>{
+	function test(expected_cycles, body) {
+		const vm_state = prep_brk_test(":main " + body + " ;");
+		const i0 = vm_state.get_cycle_counter();
+		RUN_UNTIL_END(vm_state);
+		const actual_cycles = i0 - vm_state.get_cycle_counter();
+		ASSERT_SAME("cycles", actual_cycles, expected_cycles);
+	}
+
+	test(1, ""); // 1 return
+	test(2, "69"); // 1 return + 1 push
+	test(3, "69 42"); // 1 return + 2 pushes
+	test(4, ":w0rd 790 ; w0rd"); // 2 returns, 1 push, 1 call
+
+	{
+		const vm_state = prep_brk_test(":main (BRK)69 ;");
+		const i0 = vm_state.get_cycle_counter();
+		RUN_UNTIL_TMPBRK(vm_state);
+		RUN_UNTIL_END(vm_state);
+		const actual_cycles = i0 - vm_state.get_cycle_counter();
+		ASSERT_SAME("cycles", actual_cycles, 2);
+	}
+
+	{
+		const vm_state = prep_brk_test(":main (BRK)69 (BRK)42 ;");
+		const i0 = vm_state.get_cycle_counter();
+		RUN_UNTIL_TMPBRK(vm_state);
+		RUN_UNTIL_TMPBRK(vm_state);
+		RUN_UNTIL_END(vm_state);
+		const actual_cycles = i0 - vm_state.get_cycle_counter();
+		ASSERT_SAME("cycles", actual_cycles, 3);
+	}
+});
 
 TEST("breakpoints 101 (simple stuff)", ()=>{
 	const vm_state = prep_brk_test(`
@@ -596,7 +630,7 @@ TEST("breakpoints 205 (do/while)", ()=>{
 					console.log("STACK", stack, "/R", rstack);
 
 				});
-				vm_state.set_iteration_counter(MAX_INSTRUCTIONS);
+				vm_state.set_cycle_counter(MAX_INSTRUCTIONS);
 				vm_state.set_pc_to_export_word_index(xi);
 
 				while (vm_state.can_run()) {
@@ -616,7 +650,7 @@ TEST("breakpoints 205 (do/while)", ()=>{
 					throw new TRR("not a clean exit at " + vm_state.get_position_human());
 				}
 
-				const n_ops = MAX_INSTRUCTIONS - vm_state.get_iteration_counter();
+				const n_ops = MAX_INSTRUCTIONS - vm_state.get_cycle_counter();
 				const stack = vm_state.get_stack();
 				const rstack = vm_state.get_rstack();
 				if (stack.length !== 0 || rstack.length !== 0)  throw new TRR("unclean stack after test: " + JSON.stringify([stack,"/R",rstack]));

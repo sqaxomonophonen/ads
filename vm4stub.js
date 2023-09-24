@@ -36,8 +36,8 @@
 			stack,
 			rstack,
 			globals,
-			max_instructions,    // XXX(size) this is only required for "live coding safety" and step debugging
-			value_type_tag_map,  // XXX(size) a debug thing
+			cycles, // XXX(size) this is only required for "live coding safety" and step debugging
+			value_type_tag_map, // XXX(size) a debug thing
 		] = state,
 
 		current_opcode,
@@ -184,7 +184,7 @@
 	/*ST4:arrsplit*/   push_op((__pivot, __xs) => { __pivot = POP(); __xs = POP(); u(__xs.slice(0,__pivot)); u(__xs.slice(__pivot)); });
 
 	let exc; // XXX(size)
-	const bundle_state = _ => [pc0,pc1,stack,rstack,globals,max_instructions,value_type_tag_map,exc] // XXX(size) not required in release
+	const bundle_state = _ => [pc0,pc1,stack,rstack,globals,cycles,value_type_tag_map,exc] // XXX(size) not required in release
 
 	/*ST4{DEBUG*/
 	push_op(
@@ -199,8 +199,8 @@
 	//    for(;advance(),!ops[current_opcode](););
 	try {
 		if (pc0 < 0) throw new Error("program has ended");
-		while (max_instructions > 0) {
-			max_instructions--;
+		while (cycles > 0) {
+			cycles--;
 			advance();
 			const opfn = ops[current_opcode];
 			if (typeof opfn !== "function") throw new Error(
