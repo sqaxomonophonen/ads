@@ -187,37 +187,25 @@ function prep_brk_test(tagged_src) {
 }
 
 TEST("cycles", ()=>{
-	function test(expected_cycles, body) {
+	function test(expected_cycles, n_tmpbrks, body) {
 		const vm_state = prep_brk_test(":main " + body + " ;");
 		const i0 = vm_state.get_cycle_counter();
+		for (let i = 0; i < n_tmpbrks; i++) RUN_UNTIL_TMPBRK(vm_state);
 		RUN_UNTIL_END(vm_state);
 		const actual_cycles = i0 - vm_state.get_cycle_counter();
 		ASSERT_SAME("cycles", actual_cycles, expected_cycles);
 	}
 
-	test(1, ""); // 1 return
-	test(2, "69"); // 1 return + 1 push
-	test(3, "69 42"); // 1 return + 2 pushes
-	test(4, ":w0rd 790 ; w0rd"); // 2 returns, 1 push, 1 call
-
-	{
-		const vm_state = prep_brk_test(":main (BRK)69 ;");
-		const i0 = vm_state.get_cycle_counter();
-		RUN_UNTIL_TMPBRK(vm_state);
-		RUN_UNTIL_END(vm_state);
-		const actual_cycles = i0 - vm_state.get_cycle_counter();
-		ASSERT_SAME("cycles", actual_cycles, 2);
-	}
-
-	{
-		const vm_state = prep_brk_test(":main (BRK)69 (BRK)42 ;");
-		const i0 = vm_state.get_cycle_counter();
-		RUN_UNTIL_TMPBRK(vm_state);
-		RUN_UNTIL_TMPBRK(vm_state);
-		RUN_UNTIL_END(vm_state);
-		const actual_cycles = i0 - vm_state.get_cycle_counter();
-		ASSERT_SAME("cycles", actual_cycles, 3);
-	}
+	test(1, 0, ""); // 1 return
+	test(2, 0, "69"); // 1 return + 1 push
+	test(3, 0, "69 42"); // 1 return + 2 pushes
+	test(4, 0, ":w0rd 790 ; w0rd"); // 2 returns, 1 push, 1 call
+	test(2, 1, "(BRK)69");
+	test(3, 2, "(BRK)69 (BRK)42");
+	test(4, 1, ":w0rd (BRK)790 ; w0rd");
+	test(4, 1, ":w0rd (BRK) 790 ; w0rd");
+	test(4, 1, ":w0rd 790 ; (BRK)w0rd");
+	test(4, 1, ":w0rd 790 ; (BRK) w0rd");
 });
 
 TEST("breakpoints 101 (simple stuff)", ()=>{
