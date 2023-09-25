@@ -286,14 +286,12 @@ const vm = (() => {
 			return;
 		}
 
+		let usrbrk;
 		if (cursor_position != null) {
-			const curpos = [
+			usrbrk = prg.resolve_breakpoint(
 				path.basename(filesys.uri_to_full_path(cursor_position.uri)),
 				cursor_position.line - 1,
-				cursor_position.column,
-			];
-
-			prg.set_tmpbrk_at_cursor(curpos[0], curpos[1], curpos[2]);
+				cursor_position.column);
 		}
 
 		let last_attempt_cycle_count, vm_state, cycle_budget_exceeded,
@@ -316,19 +314,19 @@ const vm = (() => {
 				if (vm_state.did_exit()) {
 					break;
 				}
-				const rr = vm_state.run();
+				const rr = vm_state.run(usrbrk);
 				if (vm_state.did_throw()) {
 					runtime_error = vm_state.get_exception();
 					break;
 				}
 				if (!vm_state.did_exit()) {
-					if (rr[0] === "tmpbrk") {
+					if (rr === "usrbrk") {
 						passes_left--;
 						last_attempt_cycle_count = get_cycle_count() - 1;
-					} else if (rr[0] === "brk") {
+					} else if (rr === "brk") {
 						// in-code breakpoint
 						LOG("BRK at " + JSON.stringify(vm_state.pc(-1)) +  " at " + vm_state.get_position_human());
-					} else if (rr[0] === "assert") {
+					} else if (rr === "assert") {
 						assertion_failed = true;
 						break;
 					} else if (vm_state.get_cycle_counter() === 0) {

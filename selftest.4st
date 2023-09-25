@@ -250,13 +250,6 @@
    arrnew    isnumber not assert      isarr assert   drop
 ;
 
-: test_performance
-   : n 5 4 e10 ;
-   0
-   n times 1 + loop
-   n = assert
-;
-
 : test_brk
    ( the VM can be stoped with brk/breakpoints and can be re-entered, which the )
    ( test-runner does; the program should not see any difference )
@@ -278,3 +271,11 @@
    brk
    1 assert ( try 0 to see that this point is reached by test )
 ;
+
+: test_performance
+   : n 5 4 e10 ;
+   0
+   n times 1 + loop
+   n = assert
+;
+

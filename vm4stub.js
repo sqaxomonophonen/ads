@@ -28,7 +28,7 @@
 
 // comments in the format of "/*ST4...*/" are directives for compiler.js
 
-(words, state, dump_callback) => { // XXX(size) "dump_callback" not useful in release
+(words, state, dump_callback, usrbrk) => { // XXX(size) dump_callback/usrbrk should not be in release
 	let
 		[
 			// see state explanation above
@@ -195,24 +195,37 @@
 	);
 	/*ST4}DEBUG*/
 
-	// XXX(size) this is the "debug version". in release, try:
-	//    for(;advance(),!ops[current_opcode](););
+	// XXX(size) the rest of the function is the "debug version". (in release, try: `for(;advance(),!ops[current_opcode](););`)
+	let halting_solution; // it is a joke you see
 	try {
 		if (pc0 < 0) throw new Error("program has ended");
 		while (cycles > 0) {
-			cycles--;
+			if (usrbrk && usrbrk[0] === pc0 && usrbrk[1] === pc1) {
+				halting_solution = ["usrbrk"];
+				break;
+			}
 			advance();
+			cycles--;
 			const opfn = ops[current_opcode];
 			if (typeof opfn !== "function") throw new Error(
 				"ops[" + current_opcode + "] is not a function"
 				+ " / state=" + JSON.stringify(bundle_state())
 				+ " / words=" + JSON.stringify(words)
 			);
-			if (opfn()) break;
+			if (opfn()) {
+				if (pc0 < 0) {
+					halting_solution = ["end"];
+				} else {
+					halting_solution = ["op", current_opcode];
+				}
+				break;
+			}
 		}
+		if (!halting_solution && cycles === 0) halting_solution = ["outofgas"];
+		if (!halting_solution) throw new Error("unhandled halting solution");
 	} catch (e) {
 		exc = e;
 	}
 
-	return bundle_state(); // XXX(size) probably return stack or stack[0] in release?
+	return [bundle_state(), halting_solution]; // XXX(size) probably return stack or stack[0] in release?
 }

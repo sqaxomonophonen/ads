@@ -342,56 +342,12 @@ function new_compiler(read_file_fn) {
 	const is_test_word = word => word.startsWith("test_");
 	const is_main_word = word => word.startsWith("main_");
 
-	function src_lookup(pos2lvl, filename, line, column) {
-		// XXX this lookup looks at the compiled code, which is a bit
-		// more sparse in information that the source itself. I think
-		// this function could be improved by locating the word the
-		// cursor is in, and then look for the best position in that
-		// word alone
-		const n0 = pos2lvl.length;
-		let best_return_value = null;
-		let best_distance = null;
-		let best_op0_return_value = null;
-		let best_op0_distance = null;
-		function is_better_distance(best,challenge) {
-			return (best === null) || (challenge[0] < best[0] || (challenge[0] === best[0] && challenge[1] < best[1]));
-		}
-		for (let i0 = 0; i0 < n0; i0++) {
-			const positions = pos2lvl[i0];
-			const n1 = positions.length;
-			if (n1.length === 0) continue;
-
-			const op0_distance = [ positions[0][1]-line, positions[0][2]-column ];
-			if (op0_distance[0] > 0 || (op0_distance[0] === 0 && op0_distance[1] > 0)) {
-				if (is_better_distance(best_op0_distance, op0_distance)) {
-					best_op0_return_value = [[i0, 0], false];
-					best_op0_distance = op0_distance;
-				}
-			}
-
-			for (let i1 = 0; i1 < n1; i1++) {
-				const pos = positions[i1];
-				if (pos[0] !== filename) continue;
-				if (line > pos[1] || (line === pos[1] && column >= pos[2])) {
-					const distance = [line-pos[1], column-pos[2]];
-					if (distance[0] < 0) throw new Error("ASSERTION ERROR");
-					if (is_better_distance(best_distance, distance)) {
-						const in_token = (line === pos[1]) && (pos[2] <= column && column < pos[3]);
-						best_return_value = [[i0,i1 + (in_token?0:1)],in_token];
-						best_distance = distance;
-
-					}
-				}
-			}
-		}
-		return best_return_value !== null ? best_return_value : best_op0_return_value;
-	}
-
 	function span_contains(line0, col0, line1, col1, line, col) {
 		if (line < line0 || line1 < line) return false;
 		if (line0 < line && line < line1) return true;
-		if (line === line0) return col >= col0;
-		if (line === line1) return col1 > col;
+		if (line === line0 && line === line1) return col0 <= col && col < col1;
+		if (line === line0) return col0 <= col;
+		if (line === line1) return col < col1;
 		throw new Error("UNREACHABLE");
 	}
 
@@ -491,6 +447,11 @@ function new_compiler(read_file_fn) {
 				case BEGIN_INLINE_WORD: {
 					const subword = get_word_tree(depth+1);
 					subword.name = arg0;
+					const pos1 = tokenizer_state.positions[token_cursor];
+					subword.span = [
+						[ pos[0],  pos[1],  pos[2]],
+						[pos1[0], pos1[1], pos1[3]],
+					];
 					if (typ === BEGIN_TABLE_WORD)  subword.is_table_word = true;
 					if (typ === BEGIN_INLINE_WORD) subword.is_inline_word = true;
 					word.subwords.push(subword);
@@ -513,6 +474,7 @@ function new_compiler(read_file_fn) {
 				default: throw new Error("unhandled token: " + JSON.stringify(tok));
 				}
 			}
+
 			return word;
 		}
 
@@ -679,9 +641,11 @@ function new_compiler(read_file_fn) {
 
 			const vm_words = [];
 			const dbg_words = [];
+			const vm_word_spans = [];
 			for (const word of prg_words) {
 				vm_words.push(word.ops.map(op => [op_remap[op[0]], ...op.slice(1)]));
 				dbg_words.push(word.oppos);
+				vm_word_spans.push(word.span);
 			}
 
 			const export_word_indices = [];
@@ -829,51 +793,6 @@ function new_compiler(read_file_fn) {
 				return ops[oi]
 			}
 
-			function is_op_at(word_op_pos, op) {
-				return get_op(word_op_pos)[0] === op;
-			}
-
-			// tmpbrk:
-			// [sqrt] becomes [brk, <defer>, sqrt], [PUSH_IMM, 42]
-			// becomes [brk, <defer>, PUSH_IMM, 42], and so on.
-			// this allows disabling breakpoints by removing [brk,
-			// <defer>] again. when <defer>=true it means that
-			// run() should stop _before_ the brk. otherwise it
-			// stops after executing the masked op, e.g. the
-			// [PUSH_IMM, 42] of [brk, <defer>, PUSH_IMM, 42]
-
-			function is_tmpbrk_at(word_op_pos) {
-				const op = get_op(word_op_pos);
-				return op.length >= 3 && op[0] === OP_BRK; // a normal brk is [BRK] / length=1
-			}
-
-			function set_tmpbrk_at(word_op_pos, is_deferred) {
-				if (is_tmpbrk_at(word_op_pos)) {
-					throw new Error("tmpbrk already there");
-				}
-				const op = get_op(word_op_pos);
-				op.unshift(is_deferred);
-				op.unshift(OP_BRK);
-			}
-
-			function set_tmpbrk_at_cursor(filename, line, col) {
-				const r = src_lookup(dbg_words, filename, line, col);
-				if (r === null) throw new Error("null lookup");
-				const [ brkpos, in_token ] = r;
-				if (brkpos) {
-					set_tmpbrk_at(brkpos, !in_token);
-				}
-			}
-
-			function remove_tmpbrk_at(word_op_pos) {
-				if (!is_tmpbrk_at(word_op_pos)) {
-					throw new Error("no tmpbrk to remove");
-				}
-				const op = get_op(word_op_pos);
-				op.shift();
-				op.shift();
-			}
-
 			function bless(raw) {
 				let self;
 				const PC0=0, PC1=1, STACK=2, RSTACK=3, GLOBALS=4,
@@ -891,19 +810,6 @@ function new_compiler(read_file_fn) {
 					raw[CYCLE_COUNT]++;
 				}
 
-				function is_op(delta, op) {
-					return is_op_at(pc(delta), op);
-				}
-				function is_tmpbrk(delta) {
-					return is_tmpbrk_at(pc(delta));
-				}
-				function set_tmpbrk(delta) {
-					set_tmpbrk_at(pc(delta));
-				}
-				function remove_tmpbrk(delta) {
-					remove_tmpbrk_at(pc(delta));
-				}
-
 				const has_ended = () => raw[PC0] < 0;
 				const has_cycles_left = () => raw[CYCLE_COUNT] > 0;
 				const can_run = () => !has_ended() && has_cycles_left();
@@ -913,93 +819,60 @@ function new_compiler(read_file_fn) {
 					if (!has_cycles_left()) throw new Error("cannot run(); no cycles left");
 				}
 
-				function is_deferred_tmpbrk() {
-					return is_tmpbrk() && get_op(pc())[1];
-				}
+				function run(usrbrk) {
+					assert_can_run();
+					const dump_callback = (_raw) => {
+						if (dump_callback_fn) {
+							raw = _raw;
+							dump_callback_fn(self);
+						}
+					};
 
-				function rawrun() {
-					raw = vm(vm_words, raw, (_raw) => {
-						raw = _raw;
-						dump_callback_fn(self);
-					});
-				}
-
-				function run() {
-					if (raw[PC0] < 0) throw new Error("program has ended");
-					if (raw[PC1] < 0) {
-						raw[PC1] = 0;
-					} else if (is_deferred_tmpbrk()) {
-						const brkpos = pc();
-						remove_tmpbrk();
-						single_step();
-						set_tmpbrk_at(brkpos);
+					// a bit of a hack to handle when pc===usrbrk. this can mean two things:
+					//  - we want to continue until pc===usrbrk again
+					//  - this is a usrbrk at the very start of the program
+					let halting_solution;
+					const first_entry = (raw[PC1] === -1)
+					if (first_entry) raw[PC1] = 0;
+					if (!first_entry && usrbrk && raw[PC0] === usrbrk[0] && raw[PC1] === usrbrk[1]) {
+						const tmp = raw[CYCLE_COUNT];
+						// single-step without usrbrk
+						raw[CYCLE_COUNT] = 1;
+						[ raw, halting_solution ] = vm(vm_words, raw, dump_callback);
+						raw[CYCLE_COUNT] = tmp-1;
 					}
-					rawrun();
-					if (raw[EXC]) {
-						throw new Error("vm threw: " + raw[EXC]);
-					} else if (raw[PC0] < 0) {
-						return ["end"];
-					} else if (!has_cycles_left()) {
-						return ["outofgas"];
-					} else if (is_tmpbrk(-1)) {
-						rewind();
-						if (!is_deferred_tmpbrk()) {
-							remove_tmpbrk();
-							const brkpos = pc();
-							// there are two methods for executing
-							// up until and including the op under
-							// the cursor, and neither of them work
-							// for all cases. single stepping works
-							// for everything except calls (because
-							// you single-step into the function
-							// call, and not over it), and goto
-							// pc+1 works for everything except
-							// loops.
-							if (is_call()) {
-								goto_pc_plus_one_at_breakpoint();
-							} else {
-								single_step();
+					if (halting_solution !== "outofgas") {
+						[ raw, halting_solution ] = vm(vm_words, raw, dump_callback, usrbrk);
+					}
+					switch (halting_solution[0]) {
+					case "usrbrk":
+					case "outofgas":
+					case "end":
+						return halting_solution[0];
+					case "op": {
+						const stopcode = halting_solution[1]; // VM only knows the opcode...
+						switch (stopcode) {
+						case OP_BRK:    return "brk";
+						case OP_ASSERT: return "assert";
+						default: {
+							let isa_index;
+							for (const k in op_remap) {
+								if (op_remap[k] === stopcode) {
+									isa_index = k;
+									break;
+								}
 							}
-							set_tmpbrk_at(brkpos); // restore breakpoint
+							let extra = "";
+							if (isa_index !== undefined) {
+								extra = " / ISE="+JSON.stringify(ISA[isa_index]);
+							}
+							throw new Error("unhandled stopcode " + stopcode + extra);
+						} break;
 						}
-						return ["tmpbrk"];
-					} else if (is_op(-1, OP_BRK)) {
-						return ["brk"];
-					} else if (is_op(-1, OP_ASSERT)) {
-						return ["assert"];
-					} else {
-						throw new Error("unhandled break");
+					} break;
+					default:
+						throw new Error("problematic halting solution: " + JSON.stringify(halting_solution));
 					}
-				}
-
-				function single_step() {
-					const tmp = get_cycle_counter();
-					set_cycle_counter(1); // prepare single-step
-					rawrun(); // single-step
-					set_cycle_counter(tmp-1); // restore cycle counter
-				}
-
-				function pceq(p0, p1) {
-					return p0[0] === p1[0] && p0[1] === p1[1];
-				}
-
-				function goto_pc_plus_one_at_breakpoint() {
-					const bp1 = pc(); // NOTE pc() returns copy, not reference
-					bp1[1] += 1;
-					set_tmpbrk_at(bp1);
-					for (;;) {
-						rawrun();
-						if (pceq(pc(-1), bp1)) {
-							rewind();
-							break;
-						}
-					}
-					remove_tmpbrk_at(bp1);
-				}
-
-				function is_call() {
-					const op = get_pc_op();
-					return op[0] === opresolv(CALL) || op[0] === opresolv(WORD, "call");
 				}
 
 				const get_stack  = () => raw[STACK];
@@ -1024,6 +897,7 @@ function new_compiler(read_file_fn) {
 
 				self = {
 					get_raw: () => raw,
+					get_vm_words: () => vm_words,
 					can_run,
 					get_cycle_counter,
 					set_cycle_counter,
@@ -1031,16 +905,17 @@ function new_compiler(read_file_fn) {
 					get_rstack,
 					did_exit: () => raw[PC0] < 0,
 					did_throw: () => !!raw[EXC],
-					get_exception:  () => raw[EXC],
+					get_exception: () => raw[EXC],
 					get_position,
-					pc,
 					get_position_human: () => {
 						const pos = get_position();
 						if (!pos) return "???";
 						return pos[0] + ":" + (1+pos[1]) + ":" + (1+pos[2]);
 					},
 					set_pc_to_export_word_index: (i) => {
-						raw[PC0] = export_word_indices[i];
+						const j = export_word_indices[i];
+						if (j === undefined) throw new Error("bad index: " + i);
+						raw[PC0] = j;
 						raw[PC1] = -1;
 					},
 					run,
@@ -1059,15 +934,48 @@ function new_compiler(read_file_fn) {
 				])
 			}
 
+			function resolve_breakpoint(filename, line, col) {
+				let best_span_index = null;
+				let best_span_size = null;
+				for (let i = 0; i < vm_word_spans.length; i++) {
+					const [ p0, p1 ] = vm_word_spans[i];
+					if (p0[0] !== filename || p1[0] !== filename) continue;
+					if (!span_contains(p0[1], p0[2], p1[1], p1[2], line, col)) continue;
+					const span_size = [p1[1]-p0[1], p1[2]-p0[2]];
+					if (best_span_size === null || span_size[0] < best_span_size[0] || (span_size[0] === best_span_size[0] && span_size[1] < best_span_size[1])) {
+						best_span_index = i;
+						best_span_size = span_size;
+					}
+				}
+				if (best_span_index === null) return null;
+
+				function is_better_distance(best,challenge) {
+					return (best === null) || (challenge[0] < best[0] || (challenge[0] === best[0] && challenge[1] < best[1]));
+				}
+
+				let best_position = null;
+				const positions = dbg_words[best_span_index];
+				const n1 = positions.length;
+				for (let i = 0; i < n1; i++) {
+					const pos = positions[i];
+					if (pos[0] !== filename) continue;
+					best_position = [best_span_index, i];
+					if (pos[1] > line || (pos[1] === line && pos[2] >= col)) break;
+					best_position = [best_span_index, i+1];
+				}
+				return best_position;
+			}
+
 			return {
 				raw_vm: vm,
 				new_state,
 				vm_words,
 				dbg_words,
+				vm_word_spans,
 				export_word_indices,
 				export_word_names,
 				vm_src,
-				set_tmpbrk_at_cursor,
+				resolve_breakpoint,
 			};
 		}
 
