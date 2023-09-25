@@ -253,8 +253,8 @@ TEST("cycle accounting", ()=>{
 	test(3, 2, "(BRK0)69 (BRK1)42", [69,42]);
 	test(4, 1, ":w0rd (BRK0)790 ; w0rd",  [790]);
 	test(4, 1, ":w0rd 790 ; (BRK0)w0rd",  [790]);
-	//test(4, 1, ":w0rd (BRK0) 790 ; w0rd", [790]); // XXX FAIL
-	//test(4, 1, ":w0rd 790 ; (BRK0) w0rd", [790]); // XXX FAIL
+	test(4, 1, ":w0rd (BRK0) 790 ; w0rd", [790]);
+	test(4, 1, ":w0rd 790 ; (BRK0) w0rd", [790]);
 
 	// this one also tests the correct cycle count _at_ the breakpoint (the
 	// above tests only consider the total)
