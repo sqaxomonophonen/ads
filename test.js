@@ -527,8 +527,8 @@ TEST("breakpoints 203 (if/else/endif)", ()=>{
 	test("1 if 420 else 666 endif",      [[420]]);
 	test("1 if (BRK0)420 else 666 endif", [[], [420]]);
 	test("1 if 420 (BRK0) else 666 endif", [[420],[420]]);
-	test("1 if 420 (BRK0)else 666 endif", [[420]]); // XXX ... should it break after else? i.e. [[420],[420]]
-	test("1 if 420 (BRK0)else 666 endif 790", [[420,790]]); // XXX ... should it break after else? i.e. [[420],[420]]
+	test("1 if 420 (BRK0)else 666 endif", [[420],[420]]);
+	test("1 if 420 (BRK0)else 666 endif 790", [[420],[420,790]]);
 	test("0 if 420 (BRK0)else 666 endif", [[666]]);
 	test("0 if 420 else (BRK0)666 endif", [[], [666]]);
 	test("0 if 420 else 666 (BRK0)endif", [[666], [666]]);
