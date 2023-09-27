@@ -3,7 +3,7 @@ function new_compiler(read_file_fn) {
 	const WORD="WORD", ID="ID", NUMBER="NUMBER", CALL="CALL", OP1="OP1",
 	INFIX="INFIX", PREFIX="PREFIX", MATH1="MATH1", USER_WORD="USER_WORD";
 
-	const FLAG_KEYWORD = 1<<0;
+	const FLAG_KEYWORD = 1<<0; // syntax highlight thing; has no semantic meaning
 
 	const ISA = [
 		// NOTE: ISA order must match vm4stub.js order
@@ -94,6 +94,7 @@ function new_compiler(read_file_fn) {
 		// these should not exist in release builds; they're used for
 		// unit/self testing, debugging, etc.
 
+		[   WORD    , "nop"       ,  ID     ,  "DEBUG"       ], // eats a cycle nom nom
 		[   WORD    , "assert"    ,  ID     ,  "DEBUG"       ], // pop value; crash if zero
 		[   WORD    , "dump"      ,  ID     ,  "DEBUG"       ], // dump stack/rstack contents
 		[   WORD    , "brk"       ,  ID     ,  "DEBUG"       ], // breakpoint
@@ -796,7 +797,7 @@ function new_compiler(read_file_fn) {
 			function bless(raw) {
 				let self;
 				const PC0=0, PC1=1, STACK=2, RSTACK=3, GLOBALS=4,
-				      CYCLE_COUNT=5, VALUE_TYPE_TAG_MAP=6, EXC=7;
+				      CYCLE_COUNT=5, VALUE_TYPE_TAG_MAP=6;
 				const pc0 = () => raw[PC0];
 				const pc1 = () => raw[PC1];
 				const pc = (delta) => [pc0(), pc1()+(delta|0)];
@@ -804,92 +805,274 @@ function new_compiler(read_file_fn) {
 				const get_position = () => dbg_words[pc0()][pc1()-1];
 				const get_cycle_counter =  () => raw[CYCLE_COUNT];
 				const set_cycle_counter = (n) => raw[CYCLE_COUNT] = Math.ceil(n);
-				let dump_callback_fn;
-				function rewind() {
-					raw[PC1]--;
-					raw[CYCLE_COUNT]++;
-				}
+				let dump_callback_fn, halting_solution, last_exception, snapshot0;
 
 				const has_ended = () => raw[PC0] < 0;
 				const has_cycles_left = () => raw[CYCLE_COUNT] > 0;
 				const can_run = () => !has_ended() && has_cycles_left();
 
-				function assert_can_run() {
+				function assert_has_not_ended() {
 					if (has_ended()) throw new Error("cannot run(); program has ended");
+					if (last_exception) throw new Error("cannot run(); re-entry after exception (" + last_exception + ")");
+				}
+
+				function assert_has_started() {
+					if (raw[PC1] < 0) throw new Error("cannot run(); program has not started (can happen if you attempt single-stepping before running?)");
+				}
+
+				function assert_is_running() {
+					assert_has_not_ended();
+					assert_has_started();
+				}
+
+				function assert_has_cycles_left() {
 					if (!has_cycles_left()) throw new Error("cannot run(); no cycles left");
 				}
 
-				function run(usrbrk) {
-					assert_can_run();
-					const dump_callback = (_raw) => {
-						if (dump_callback_fn) {
-							raw = _raw;
-							dump_callback_fn(self);
+				function export_tagged(x) {
+					// XXX this function should probably preserve references? it
+					// serves two needs:
+					//  - exporting the VM state so the "frontend" can display it
+					//  - save_snapshot()
+					// the "frontend" doesn't really care whether it receives a
+					// deep copy or something that preserves references (although
+					// it's possible it could speed up rendering for DRY-reasons?),
+					// but if a snapshot is restored from a deep copy, it can lead
+					// to subtle bugs with code that depends on having references.
+					// see also ":test_arrays_are_references...;" in "selftest.4st".
+					const tagmap = raw[VALUE_TYPE_TAG_MAP];
+					function maprec(x) {
+						if (x instanceof Array) {
+							const y = x.map(maprec);
+							if (tagmap.has(x)) {
+								return {
+									t: tagmap.get(x),
+									x: y,
+								};
+							} else {
+								return y;
+							}
+						} else {
+							if (typeof x === "object" && x !== null) throw new Error("unexpected/unsafe value to export like this: " + JSON.stringify(x));
+							return x;
 						}
-					};
+					}
+					return maprec(x);
+				}
 
+				function get_tagged_stack() {
+					return export_tagged(raw[STACK]);
+				}
+
+				function get_tagged_globals() {
+					return export_tagged(raw[GLOBALS]);
+				}
+
+				function import_tagged(x, value_type_tag_map) {
+					function maprec(x) {
+						//> {} instanceof Object === true
+						//> {} instanceof Array  === false
+						//> [] instanceof Array  === true
+						//> [] instanceof Object === true
+						if (x instanceof Object && x !== null && !(x instanceof Array)) {
+							const tag = x.t;
+							if (tag === undefined) throw new Error("sanity check failed; what kind of object is this? " + JSON.stringify(x));
+							const value = x.x; // O_o
+							value_type_tag_map.set(value, tag);
+							return value;
+						} else if (x instanceof Array) {
+							return x.map(maprec);
+						} else {
+							return x;
+						}
+
+					}
+					return maprec(x);
+				}
+
+				function save_snapshot() {
+					// XXX see deep-copy vs preserve-references discussion in export_tagged()
+					return {
+						pc0:             raw[PC0],
+						pc1:             raw[PC1],
+						tagged_stack:    get_tagged_stack(),
+						rstack:          JSON.parse(JSON.stringify(raw[RSTACK])), // TODO maybe do something less stupid? :)
+						tagged_globals:  get_tagged_globals(),
+						cycle_count:     raw[CYCLE_COUNT],
+					};
+				}
+
+				function restore_snapshot(snap) {
+					// XXX see deep-copy vs preserve-references discussion in export_tagged()
+					raw[PC0] = snap.pc0;
+					raw[PC1] = snap.pc1;
+					raw[RSTACK] = snap.rstack;
+					raw[CYCLE_COUNT] = snap.cycle_count;
+					let value_type_tag_map = new WeakMap();
+					raw[STACK]   = import_tagged(snap.tagged_stack,   value_type_tag_map);
+					raw[GLOBALS] = import_tagged(snap.tagged_globals, value_type_tag_map);
+					raw[VALUE_TYPE_TAG_MAP] = value_type_tag_map;
+				}
+
+				function rawrun(usrbrk) {
+					assert_is_running();
+					let raw_halting_solution;
+					[ raw, raw_halting_solution, last_exception ] = vm(vm_words, raw, dump_callback, usrbrk);
+					// "unpack" halting_solution from raw_halting_solution
+					halting_solution = (() => {
+						switch (raw_halting_solution[0]) {
+						case "usrbrk":
+						case "end":
+						case "outofgas":
+							return raw_halting_solution[0];
+						case "_opcode": {
+							// VM stopped due to a "stopping op", but the VM only knows the opcode, so
+							// translate it into a useful name here
+							const stopcode = raw_halting_solution[1];
+							switch (stopcode) {
+							case OP_BRK:     return "brk";
+							case OP_ASSERT:  return "assert";
+							default: {
+								let isa_index;
+								for (const k in op_remap) {
+									if (op_remap[k] === stopcode) {
+										isa_index = k;
+										break;
+									}
+								}
+								let extra = "";
+								if (isa_index !== undefined) {
+									extra = " / ISE="+JSON.stringify(ISA[isa_index]);
+								}
+								throw new Error("unhandled stopcode " + stopcode + extra);
+							}; break;
+							}
+						}; break;
+						default: throw new Error("unexpected raw halting solution: " + JSON.stringify(raw_halting_solution));
+						}
+					})();
+				}
+
+				function dump_callback(_raw) {
+					if (dump_callback_fn) {
+						raw = _raw;
+						dump_callback_fn(self);
+					}
+				}
+
+				function forward_single_step(d) {
+					assert_is_running();
+					const tmp = raw[CYCLE_COUNT];
+					raw[CYCLE_COUNT] = d;
+					rawrun();
+					raw[CYCLE_COUNT] = tmp-d;
+				}
+
+				function run(usrbrk) {
+					assert_has_not_ended();
+					assert_has_cycles_left();
 					// a bit of a hack to handle when pc===usrbrk. this can mean two things:
 					//  - we want to continue until pc===usrbrk again
 					//  - this is a usrbrk at the very start of the program
-					let halting_solution;
-					const first_entry = (raw[PC1] === -1)
-					if (first_entry) raw[PC1] = 0;
+					const first_entry = (raw[PC1] === -1);
+					if (first_entry) {
+						raw[PC1] = 0;
+						snapshot0 = save_snapshot();
+					}
+					assert_has_started();
 					if (!first_entry && usrbrk && raw[PC0] === usrbrk[0] && raw[PC1] === usrbrk[1]) {
+						forward_single_step(1);
+					}
+					rawrun(usrbrk);
+					return halting_solution;
+				}
+
+				function single_step(d) {
+					assert_is_running();
+					if (d > 0) {
+						forward_single_step(d);
+					} else if (d < 0) {
+						// to step backwards, restore previous snapshot and run
+						// until desired cycle count. NOTE: if stepping starts
+						// getting slow, maybe look into saving snapshots that are
+						// closer to PC; here the initial snapshot is used
+						const c0 = raw[CYCLE_COUNT];
+						restore_snapshot(snapshot0);
+						const c1 = raw[CYCLE_COUNT] - c0;
+						const dc = c1 + d;
 						const tmp = raw[CYCLE_COUNT];
-						// single-step without usrbrk
-						raw[CYCLE_COUNT] = 1;
-						[ raw, halting_solution ] = vm(vm_words, raw, dump_callback);
-						raw[CYCLE_COUNT] = tmp-1;
+						raw[CYCLE_COUNT] = dc;
+						for (;;) {
+							rawrun();
+							if (halting_solution === "outofgas") break;
+						}
+						raw[CYCLE_COUNT] = tmp-dc;
 					}
-					if (halting_solution !== "outofgas") {
-						[ raw, halting_solution ] = vm(vm_words, raw, dump_callback, usrbrk);
+				}
+
+				function goto_brk(d) {
+					if (d > 0) {
+						while (d > 0) {
+							rawrun();
+							if (halting_solution === "brk") d--;
+						}
+					} else if (d < 0) {
+						const c0 = raw[CYCLE_COUNT];
+						restore_snapshot(snapshot0);
+						let brks = [];
+						while (raw[CYCLE_COUNT] > c0) {
+							rawrun();
+							if (halting_solution === "brk") {
+								brks.push(raw[CYCLE_COUNT]);
+							}
+						}
+						const cbrk = brks[brks.length - 1 + d];
+						restore_snapshot(snapshot0);
+						for (;;) {
+							rawrun();
+							if (raw[CYCLE_COUNT] === cbrk) break;
+						}
 					}
-					switch (halting_solution[0]) {
-					case "usrbrk":
-					case "outofgas":
-					case "end":
-						return halting_solution[0];
-					case "op": {
-						const stopcode = halting_solution[1]; // VM only knows the opcode...
-						switch (stopcode) {
-						case OP_BRK:    return "brk";
-						case OP_ASSERT: return "assert";
-						default: {
-							let isa_index;
-							for (const k in op_remap) {
-								if (op_remap[k] === stopcode) {
-									isa_index = k;
+				}
+
+				function goto_pass(d) {
+					const usrbrk = [raw[PC0], raw[PC1]];
+					if (d > 0) {
+						while (d > 0) {
+							for (;;) {
+								single_step(1); // skip past usrbrk
+								rawrun(usrbrk);
+								if (halting_solution === "usrbrk") {
+									d--;
 									break;
 								}
 							}
-							let extra = "";
-							if (isa_index !== undefined) {
-								extra = " / ISE="+JSON.stringify(ISA[isa_index]);
-							}
-							throw new Error("unhandled stopcode " + stopcode + extra);
-						} break;
 						}
-					} break;
-					default:
-						throw new Error("problematic halting solution: " + JSON.stringify(halting_solution));
+					} else if (d < 0) {
+						// FIXME this is broken...
+						const c0 = raw[CYCLE_COUNT];
+						restore_snapshot(snapshot0);
+						let usrbrks = [];
+						while (raw[CYCLE_COUNT] > c0) {
+							single_step(1);
+							rawrun(usrbrk);
+							if (halting_solution === "usrbrk") {
+								usrbrks.push(raw[CYCLE_COUNT]);
+								break;
+							}
+						}
+						const cbrk = usrbrks[usrbrks.length - 1 + d];
+						restore_snapshot(snapshot0);
+						for (;;) {
+							single_step(1);
+							rawrun(usrbrk);
+							if (raw[CYCLE_COUNT] === cbrk) break;
+						}
 					}
 				}
 
 				const get_stack  = () => raw[STACK];
 				const get_rstack = () => raw[RSTACK];
-
-				function get_tagged_stack() {
-					function maprec(x) {
-						const wm = raw[VALUE_TYPE_TAG_MAP];
-						if (x instanceof Array) {
-							const y = x.map(maprec);
-							return wm.has(x) ? { t: wm.get(x), x:y } : y;
-						} else {
-							return x;
-						}
-					}
-					return maprec(get_stack());
-				}
 
 				function set_dump_callback(fn) {
 					dump_callback_fn = fn;
@@ -904,8 +1087,8 @@ function new_compiler(read_file_fn) {
 					get_stack,
 					get_rstack,
 					did_exit: () => raw[PC0] < 0,
-					did_throw: () => !!raw[EXC],
-					get_exception: () => raw[EXC],
+					did_throw: () => !!last_exception,
+					get_exception: () => last_exception,
 					get_position,
 					get_position_human: () => {
 						const pos = get_position();
@@ -918,9 +1101,17 @@ function new_compiler(read_file_fn) {
 						raw[PC0] = j;
 						raw[PC1] = -1;
 					},
-					run,
-					get_tagged_stack,
 					set_dump_callback,
+
+					get_tagged_stack,
+					get_tagged_globals,
+					save_snapshot,
+					restore_snapshot,
+
+					run,
+					single_step,
+					goto_brk,
+					goto_pass,
 				};
 				return self;
 			}

@@ -229,6 +229,21 @@
    drop
 ;
 
+: test_arrays_are_references
+   ( this test only succeeds if arrays are references )
+   ( RELATED: if the debugger starts using snapshots, and if snapshots )
+   ( are still deep copies that don't preserve references, then this )
+   ( test, or one like it, may lure out the subtle bugs )
+   arrnew 69 arrpush  ( -- [69]            )
+   dup                ( -- [69] [69]       )
+   42 arrpush         ( -- [69,42] [69,42] )
+   2 times
+      0 arrget  69 = assert
+      1 arrget  42 = assert
+      drop
+   loop
+;
+
 : test_globals
    ( getglobal / setglobal allows storing values at global indices for later )
    ( retrival )

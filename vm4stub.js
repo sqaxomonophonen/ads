@@ -183,11 +183,12 @@
 	/*ST4:arrjoin*/    push_op((__a,__b) => { [__a,__b] = s(2); u([...__a, ...__b]); });
 	/*ST4:arrsplit*/   push_op((__pivot, __xs) => { __pivot = POP(); __xs = POP(); u(__xs.slice(0,__pivot)); u(__xs.slice(__pivot)); });
 
-	let exc; // XXX(size)
-	const bundle_state = _ => [pc0,pc1,stack,rstack,globals,cycles,value_type_tag_map,exc] // XXX(size) not required in release
+	const bundle_state = _ => [pc0,pc1,stack,rstack,globals,cycles,value_type_tag_map]; // XXX(size) not required in release
+	let exception; // XXX(size)
 
 	/*ST4{DEBUG*/
 	push_op(
+		_ => false,  // nop
 		_ => !POP(), // assert
 		_ => { dump_callback(bundle_state()); return false; }, // dump
 		_ => true, // brk
@@ -216,16 +217,16 @@
 				if (pc0 < 0) {
 					halting_solution = ["end"];
 				} else {
-					halting_solution = ["op", current_opcode];
+					halting_solution = ["_opcode", current_opcode]; // meant to be resolved by caller (VM doesn't know opcode names)
 				}
 				break;
 			}
 		}
 		if (!halting_solution && cycles === 0) halting_solution = ["outofgas"];
 		if (!halting_solution) throw new Error("unhandled halting solution");
-	} catch (e) {
-		exc = e;
+	} catch (ex) {
+		exception = ex;
 	}
 
-	return [bundle_state(), halting_solution]; // XXX(size) probably return stack or stack[0] in release?
+	return [bundle_state(), halting_solution, exception]; // XXX(size) probably return stack or stack[0] in release?
 }
